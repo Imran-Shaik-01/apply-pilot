@@ -1,0 +1,47 @@
+export const safeUrl = (value: string | undefined): string => {
+  if (!value) return ''
+  try {
+    const candidate = new URL(value, window.location.href)
+    return candidate.protocol === 'http:' || candidate.protocol === 'https:'
+      ? candidate.toString()
+      : ''
+  } catch {
+    return ''
+  }
+}
+
+export const normalizeText = (value: string | undefined): string => {
+  if (!value) return ''
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+export const isoNow = () => new Date().toISOString()
+
+export const formatDate = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(iso))
+
+export const getWeekStart = (date: Date, startDay = 1) => {
+  const copy = new Date(date)
+  const day = copy.getDay()
+  const diff = (day - startDay + 7) % 7
+  copy.setDate(copy.getDate() - diff)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+export const getAppSummary = (jobs: Array<{ appliedAt: string }>, weekStartDay = 1) => {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const weekStart = getWeekStart(now, weekStartDay)
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  return {
+    total: jobs.length,
+    today: jobs.filter((job) => new Date(job.appliedAt) >= today).length,
+    week: jobs.filter((job) => new Date(job.appliedAt) >= weekStart).length,
+    month: jobs.filter((job) => new Date(job.appliedAt) >= monthStart).length,
+  }
+}
