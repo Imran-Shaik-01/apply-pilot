@@ -76,10 +76,10 @@ const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.Mes
   const autoDraft: PopupDraft = {
     title: capture.title,
     company: capture.company,
-    location: typeof capture.location === 'string' ? capture.location.slice(0, 500) : '',
-    workMode: typeof capture.workMode === 'string' ? capture.workMode.slice(0, 200) : '',
-    salary: typeof capture.salary === 'string' ? capture.salary.slice(0, 200) : '',
-    employmentType: typeof capture.employmentType === 'string' ? capture.employmentType.slice(0, 200) : '',
+    location: capture.location ?? '',
+    workMode: capture.workMode ?? '',
+    salary: capture.salary ?? '',
+    employmentType: capture.employmentType ?? '',
     pageUrl: pageUrl.toString(),
     autoCaptured: true,
   }

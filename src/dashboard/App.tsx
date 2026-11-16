@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
 import {
   defaultSettings,
@@ -44,6 +44,86 @@ const emptyDraft = (): JobDraft => ({
 
 const views: View[] = ['Overview', 'Applications', 'Insights', 'Settings']
 
+type JobRowsProps = {
+  items: JobApplication[]
+  hasApplications: boolean
+  pendingDeleteId: string | null
+  onAddFirstApplication: () => void
+  onEdit: (job: JobApplication) => void
+  onDelete: (job: JobApplication) => Promise<void>
+  onStatusChange: (job: JobApplication, status: JobStatus) => void | Promise<void>
+  onRequestDelete: (jobId: string) => void
+  onCancelDelete: () => void
+}
+
+const JobRows = memo(function JobRows({
+  items,
+  hasApplications,
+  pendingDeleteId,
+  onAddFirstApplication,
+  onEdit,
+  onDelete,
+  onStatusChange,
+  onRequestDelete,
+  onCancelDelete,
+}: JobRowsProps) {
+  return (
+    <div className="job-table">
+      <div className="job-row job-header">
+        <span>Role</span>
+        <span>Status</span>
+        <span>Applied</span>
+        <span className="actions-heading">Actions</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="empty-state">
+          {!hasApplications ? (
+            <>
+              <p>No applications yet. Add one to start your pipeline.</p>
+              <button type="button" className="primary-button" onClick={onAddFirstApplication}>Add your first application</button>
+            </>
+          ) : 'No applications match these filters.'}
+        </div>
+      ) : items.map((job) => {
+        const jobUrl = safeUrl(job.applicationUrl || job.url)
+        return (
+          <div className="job-row" key={job.id}>
+            <div className="job-role">
+              {jobUrl
+                ? <a className="job-link" href={jobUrl} target="_blank" rel="noopener noreferrer">{job.title}</a>
+                : <strong>{job.title}</strong>}
+              <span>{job.company}{job.location ? ` · ${job.location}` : ''}</span>
+              <span className="mobile-applied-date">Applied {formatDate(job.appliedAt)}</span>
+            </div>
+            <label className="status-control">
+              <span className="sr-only">Status for {job.title} at {job.company}</span>
+              <select
+                className={`status-select ${job.status.toLowerCase()}`}
+                value={job.status}
+                onChange={(event) => void onStatusChange(job, event.target.value as JobStatus)}
+              >
+                {statusOptions.map((status) => <option key={status}>{status}</option>)}
+              </select>
+            </label>
+            <span className="applied-date">{formatDate(job.appliedAt)}</span>
+            <div className="row-actions">
+              <button type="button" className="text-button" onClick={() => onEdit(job)}>Edit</button>
+              {pendingDeleteId === job.id ? (
+                <span className="delete-confirmation" role="group" aria-label={`Confirm deleting ${job.title} at ${job.company}`}>
+                  <button type="button" className="text-button danger" onClick={() => void onDelete(job)}>Confirm</button>
+                  <button type="button" className="text-button" onClick={onCancelDelete}>Cancel</button>
+                </span>
+              ) : (
+                <button type="button" className="text-button danger" onClick={() => onRequestDelete(job.id)}>Delete</button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+})
+
 export function DashboardApp() {
   const [jobs, setJobs] = useState<JobApplication[]>([])
   const [settings, setSettings] = useState<Settings>(defaultSettings)
@@ -60,6 +140,8 @@ export function DashboardApp() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const dialogRef = useRef<HTMLElement | null>(null)
   const dialogTriggerRef = useRef<HTMLElement | null>(null)
+  const recentJobs = useMemo(() => jobs.slice(0, 5), [jobs])
+  const cancelPendingDelete = useCallback(() => setPendingDeleteId(null), [])
 
   useEffect(() => {
     const load = async () => {
@@ -119,15 +201,15 @@ export function DashboardApp() {
     return searchable.includes(query.toLowerCase()) && (statusFilter === 'All' || job.status === statusFilter)
   }), [jobs, query, statusFilter])
 
-  const openNewJob = () => {
+  const openNewJob = useCallback(() => {
     dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(null)
     setDraft(emptyDraft())
     setError('')
     setDialogOpen(true)
-  }
+  }, [])
 
-  const openEditJob = (job: JobApplication) => {
+  const openEditJob = useCallback((job: JobApplication) => {
     dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(job)
     setDraft({
@@ -144,7 +226,7 @@ export function DashboardApp() {
     })
     setError('')
     setDialogOpen(true)
-  }
+  }, [])
 
   const closeDialog = () => {
     setDialogOpen(false)
@@ -225,7 +307,7 @@ export function DashboardApp() {
         job,
         ...current.filter((item) => item.id !== job.id),
       ].sort((a, b) => Date.parse(b.appliedAt) - Date.parse(a.appliedAt)))
-      setDialogOpen(false)
+      closeDialog()
       setNotice(editingJob ? 'Application updated.' : 'Application added.')
     } catch {
       setError('Could not save this application. Check the details and try again.')
@@ -234,7 +316,7 @@ export function DashboardApp() {
     }
   }
 
-  const handleDeleteJob = async (job: JobApplication) => {
+  const handleDeleteJob = useCallback(async (job: JobApplication) => {
     setError('')
     setNotice('')
     try {
@@ -245,9 +327,9 @@ export function DashboardApp() {
     } catch {
       setError('Could not delete this application.')
     }
-  }
+  }, [])
 
-  const handleStatusChange = async (job: JobApplication, status: JobStatus) => {
+  const handleStatusChange = useCallback(async (job: JobApplication, status: JobStatus) => {
     setError('')
     const updatedAt = isoNow()
     try {
@@ -256,7 +338,7 @@ export function DashboardApp() {
     } catch {
       setError(`Could not update ${job.company}'s application status.`)
     }
-  }
+  }, [])
 
   const handleSettingsChange = async (patch: Partial<Settings>) => {
     setError('')
@@ -267,62 +349,6 @@ export function DashboardApp() {
       setError('Could not save that setting.')
     }
   }
-
-  const renderJobRows = (items: JobApplication[]) => (
-    <div className="job-table">
-      <div className="job-row job-header">
-        <span>Role</span>
-        <span>Status</span>
-        <span>Applied</span>
-        <span className="actions-heading">Actions</span>
-      </div>
-      {items.length === 0 ? (
-        <div className="empty-state">
-          {jobs.length === 0 ? (
-            <>
-              <p>No applications yet. Add one to start your pipeline.</p>
-              <button type="button" className="primary-button" onClick={openNewJob}>Add your first application</button>
-            </>
-          ) : 'No applications match these filters.'}
-        </div>
-      ) : items.map((job) => {
-        const jobUrl = safeUrl(job.applicationUrl || job.url)
-        return (
-          <div className="job-row" key={job.id}>
-            <div className="job-role">
-              {jobUrl
-                ? <a className="job-link" href={jobUrl} target="_blank" rel="noopener noreferrer">{job.title}</a>
-                : <strong>{job.title}</strong>}
-              <span>{job.company}{job.location ? ` · ${job.location}` : ''}</span>
-              <span className="mobile-applied-date">Applied {formatDate(job.appliedAt)}</span>
-            </div>
-            <label className="status-control">
-              <span className="sr-only">Status for {job.title} at {job.company}</span>
-              <select
-                className={`status-select ${job.status.toLowerCase()}`}
-                value={job.status}
-                onChange={(event) => void handleStatusChange(job, event.target.value as JobStatus)}
-              >
-                {statusOptions.map((status) => <option key={status}>{status}</option>)}
-              </select>
-            </label>
-            <span className="applied-date">{formatDate(job.appliedAt)}</span>
-            <div className="row-actions">
-              <button type="button" className="text-button" onClick={() => openEditJob(job)}>Edit</button>
-              {pendingDeleteId === job.id ? (
-                <span className="delete-confirmation" role="group" aria-label={`Confirm deleting ${job.title} at ${job.company}`}>
-                  <button type="button" className="text-button danger" onClick={() => void handleDeleteJob(job)}>Confirm</button>
-                  <button type="button" className="text-button" onClick={() => setPendingDeleteId(null)}>Cancel</button>
-                </span>
-              ) : (
-                <button type="button" className="text-button danger" onClick={() => setPendingDeleteId(job.id)}>Delete</button>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
 
   return (
     <div className="dashboard-shell">
@@ -400,7 +426,17 @@ export function DashboardApp() {
 
             <section className="jobs-panel">
               <div className="panel-header"><h2>Recent applications</h2><button className="text-button" type="button" onClick={() => setView('Applications')}>View all</button></div>
-              {renderJobRows(jobs.slice(0, 5))}
+              <JobRows
+                items={recentJobs}
+                hasApplications={jobs.length > 0}
+                pendingDeleteId={pendingDeleteId}
+                onAddFirstApplication={openNewJob}
+                onEdit={openEditJob}
+                onDelete={handleDeleteJob}
+                onStatusChange={handleStatusChange}
+                onRequestDelete={setPendingDeleteId}
+                onCancelDelete={cancelPendingDelete}
+              />
             </section>
           </>
         )}
@@ -427,7 +463,17 @@ export function DashboardApp() {
                 </select>
               </div>
             </div>
-            {renderJobRows(filteredJobs)}
+            <JobRows
+              items={filteredJobs}
+              hasApplications={jobs.length > 0}
+              pendingDeleteId={pendingDeleteId}
+              onAddFirstApplication={openNewJob}
+              onEdit={openEditJob}
+              onDelete={handleDeleteJob}
+              onStatusChange={handleStatusChange}
+              onRequestDelete={setPendingDeleteId}
+              onCancelDelete={cancelPendingDelete}
+            />
           </section>
         )}
 
@@ -504,7 +550,7 @@ export function DashboardApp() {
                 <p className="eyebrow">{editingJob ? 'Edit application' : 'New application'}</p>
                 <h2 id="job-dialog-title">{editingJob ? 'Update job details' : 'Add a job'}</h2>
               </div>
-              <button type="button" className="close-button" aria-label="Close dialog" onClick={closeDialog}>×</button>
+              <button type="button" className="close-button" aria-label="Close dialog" onClick={closeDialog}>✕</button>
             </div>
             <form className="job-form" onSubmit={(event) => void handleSaveJob(event)}>
               <label>Role<input required autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>

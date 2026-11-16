@@ -1,4 +1,5 @@
 import { normalizeEmploymentType, normalizeText, normalizeWorkMode } from './normalizers'
+import { isoNow, safeUrl } from '../shared/utils'
 
 type CapturedJob = {
   id: string
@@ -17,18 +18,6 @@ type CapturedJob = {
   workMode?: string
   salary?: string
   employmentType?: string
-}
-
-const isoNow = () => new Date().toISOString()
-
-const safeUrl = (value: string | undefined) => {
-  if (!value) return ''
-  try {
-    const url = new URL(value, window.location.href)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : ''
-  } catch {
-    return ''
-  }
 }
 
 const findJobPosting = (value: unknown): Record<string, unknown> | null => {
