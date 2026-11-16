@@ -1,6 +1,25 @@
-import { defaultSettings, type JobApplication, type PopupDraft, type Settings } from '../shared/types'
+import { z } from 'zod'
+import { defaultSettings, type PopupDraft, type Settings } from '../shared/types'
 import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
+import { jobSchema, settingsSchema } from '../shared/schema'
 import { isoNow } from '../shared/utils'
+
+const automaticCaptureSchema = z.object({
+  title: z.string().trim().min(1).max(500),
+  company: z.string().trim().min(1).max(500),
+  location: z.string().max(500).optional(),
+  workMode: z.string().max(200).optional(),
+  salary: z.string().max(200).optional(),
+  employmentType: z.string().max(200).optional(),
+  pageUrl: z.string().url(),
+})
+
+const saveJobPayloadSchema = jobSchema.omit({ createdAt: true, updatedAt: true }).extend({
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+})
+
+const deleteJobPayloadSchema = z.object({ id: z.string().min(1) })
 
 const openDashboard = () => {
   if (typeof chrome !== 'undefined' && chrome.tabs) {
@@ -25,18 +44,10 @@ const serializeCaptureOperation = <T,>(operation: () => Promise<T>) => {
 }
 
 const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.MessageSender) => {
-  if (!sender.tab || sender.frameId !== 0 || !sender.url || !payload || typeof payload !== 'object') return false
-
-  const capture = payload as Partial<PopupDraft>
-  if (
-    typeof capture.title !== 'string' ||
-    !capture.title.trim() ||
-    typeof capture.company !== 'string' ||
-    !capture.company.trim() ||
-    typeof capture.pageUrl !== 'string'
-  ) {
-    return false
-  }
+  if (!sender.tab || sender.frameId !== 0 || !sender.url) return false
+  const parsedCapture = automaticCaptureSchema.safeParse(payload)
+  if (!parsedCapture.success) return false
+  const capture = parsedCapture.data
 
   let pageUrl: URL
   let senderUrl: URL
@@ -63,8 +74,8 @@ const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.Mes
   }
 
   const autoDraft: PopupDraft = {
-    title: capture.title.trim().slice(0, 500),
-    company: capture.company.trim().slice(0, 500),
+    title: capture.title,
+    company: capture.company,
     location: typeof capture.location === 'string' ? capture.location.slice(0, 500) : '',
     workMode: typeof capture.workMode === 'string' ? capture.workMode.slice(0, 200) : '',
     salary: typeof capture.salary === 'string' ? capture.salary.slice(0, 200) : '',
@@ -178,7 +189,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break
         }
         case 'UPDATE_SETTINGS': {
-          const settings = await updateSettings(payload as Partial<Settings>)
+          const settingsPatch = settingsSchema.partial().parse(payload)
+          const settings = await updateSettings(settingsPatch)
           sendResponse({ ok: true, data: settings })
           break
         }
@@ -187,16 +199,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break
         }
         case 'SAVE_JOB': {
+          const parsedJob = saveJobPayloadSchema.parse(payload)
+          const now = isoNow()
           const recorded = await saveJob({
-            ...(payload as JobApplication),
-            updatedAt: isoNow(),
-            createdAt: (payload as JobApplication).createdAt ?? isoNow(),
+            ...parsedJob,
+            updatedAt: now,
+            createdAt: parsedJob.createdAt ?? now,
           })
           sendResponse({ ok: true, data: recorded })
           break
         }
         case 'DELETE_JOB': {
-          await deleteJob(payload.id)
+          const { id } = deleteJobPayloadSchema.parse(payload)
+          await deleteJob(id)
           sendResponse({ ok: true })
           break
         }

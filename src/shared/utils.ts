@@ -1,7 +1,7 @@
 export const safeUrl = (value: string | undefined): string => {
   if (!value) return ''
   try {
-    const candidate = new URL(value, window.location.href)
+    const candidate = new URL(value)
     return candidate.protocol === 'http:' || candidate.protocol === 'https:'
       ? candidate.toString()
       : ''

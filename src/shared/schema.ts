@@ -23,9 +23,7 @@ export const jobSchema = z.object({
 
 export const settingsSchema = z.object({
   enabled: z.boolean().default(true),
-  autoSave: z.boolean().default(false),
   weekStartDay: z.number().int().min(0).max(6).default(1),
-  theme: z.enum(['light', 'dark', 'system']).default('system'),
 })
 
 export const popupDraftSchema = z.object({

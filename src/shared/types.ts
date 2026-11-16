@@ -6,8 +6,6 @@ export type JobStatus =
   | 'Withdrawn'
   | 'Ghosted'
 
-export type ThemeMode = 'light' | 'dark' | 'system'
-
 export interface JobApplication {
   id: string
   jobId?: string
@@ -31,9 +29,7 @@ export interface JobApplication {
 
 export interface Settings {
   enabled: boolean
-  autoSave: boolean
   weekStartDay: number
-  theme: ThemeMode
 }
 
 export interface PopupDraft {
@@ -49,9 +45,7 @@ export interface PopupDraft {
 
 export const defaultSettings: Settings = {
   enabled: true,
-  autoSave: false,
   weekStartDay: 1,
-  theme: 'system',
 }
 
 export const statusOptions: JobStatus[] = [

@@ -27,6 +27,15 @@ const emptyDraft: Draft = {
   employmentType: '',
 }
 
+const getPageHostname = (pageUrl: string) => {
+  try {
+    const url = new URL(pageUrl)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.hostname : ''
+  } catch {
+    return ''
+  }
+}
+
 const getActivePage = async (): Promise<{ url: string; capture?: Partial<JobApplication> }> => {
   if (typeof chrome === 'undefined' || !chrome.tabs) return { url: '' }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -96,6 +105,12 @@ export function PopupApp() {
 
     void load()
   }, [])
+
+  useEffect(() => {
+    if (!message) return
+    const timeoutId = window.setTimeout(() => setMessage(''), 3500)
+    return () => window.clearTimeout(timeoutId)
+  }, [message])
 
   const updateDraft = (nextDraft: Draft) => {
     setDraft(nextDraft)
@@ -193,8 +208,8 @@ export function PopupApp() {
       </header>
 
       <div className="today-count" aria-live="polite">
-        <span className="count-number">{todayCount}</span>
-        <span>applied today</span>
+        <span className="count-number">{draftReady ? todayCount : '…'}</span>
+        <span>{draftReady ? 'applied today' : 'Loading applications'}</span>
       </div>
 
       <form className="quick-add" onSubmit={handleQuickAdd}>
@@ -276,7 +291,7 @@ export function PopupApp() {
 
       <footer className="popup-footer">
         <span className="page-context" title={pageUrl}>
-          {pageUrl ? new URL(pageUrl).hostname : 'Open a job page to save its link'}
+          {getPageHostname(pageUrl) || 'Open a job page to save its link'}
         </span>
         <a href="./dashboard.html" target="_blank" rel="noreferrer">Dashboard <span aria-hidden="true">→</span></a>
       </footer>

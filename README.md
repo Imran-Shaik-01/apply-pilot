@@ -32,3 +32,5 @@ Apply Pilot is a Chrome extension that recognizes job information on supported l
 ## Your data
 
 Application records and settings are stored locally in your browser. Apply Pilot does not require an account or a remote service to manage your applications.
+
+To detect job information, Apply Pilot needs permission to inspect pages you visit over HTTP or HTTPS. Page analysis and application tracking happen locally in the extension; job-page content is not sent to an Apply Pilot server.

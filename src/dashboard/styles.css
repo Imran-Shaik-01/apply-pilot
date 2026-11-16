@@ -475,6 +475,19 @@ a:focus-visible {
   text-align: center;
 }
 
+.empty-state p {
+  margin: 0 0 12px;
+}
+
+.mobile-applied-date {
+  display: none;
+}
+
+.delete-confirmation {
+  display: flex;
+  gap: 6px;
+}
+
 .status-control select,
 .job-form input,
 .job-form select,
@@ -702,6 +715,10 @@ a:focus-visible {
   .job-header .actions-heading,
   .applied-date {
     display: none;
+  }
+
+  .job-role .mobile-applied-date {
+    display: block;
   }
 
   .status-control {

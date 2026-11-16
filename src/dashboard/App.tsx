@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
 import {
   defaultSettings,
@@ -56,12 +56,10 @@ export function DashboardApp() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const refresh = async () => {
-    const [nextJobs, nextSettings] = await Promise.all([listJobs(), getSettings()])
-    setJobs(nextJobs)
-    setSettings(nextSettings)
-  }
+  const [loading, setLoading] = useState(true)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const dialogTriggerRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -71,11 +69,28 @@ export function DashboardApp() {
         setSettings(nextSettings)
       } catch {
         setError('Could not load your saved applications.')
+      } finally {
+        setLoading(false)
       }
     }
 
     void load()
   }, [])
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      dialogTriggerRef.current?.focus()
+      dialogTriggerRef.current = null
+      return
+    }
+
+    const firstInput = dialogRef.current?.querySelector<HTMLElement>('input:not([disabled])')
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+      'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    const target = firstInput ?? firstFocusable
+    target?.focus()
+  }, [dialogOpen])
 
   const summary = useMemo(() => getAppSummary(jobs, settings.weekStartDay), [jobs, settings.weekStartDay])
   const sourceCounts = useMemo(() => {
@@ -86,20 +101,26 @@ export function DashboardApp() {
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
   }, [jobs])
-  const respondedCount = jobs.filter((job) =>
-    ['Interviewing', 'Offer', 'Rejected'].includes(job.status),
-  ).length
-  const interviewCount = jobs.filter((job) =>
-    ['Interviewing', 'Offer'].includes(job.status),
-  ).length
-  const responseRate = jobs.length ? Math.round((respondedCount / jobs.length) * 100) : 0
-  const interviewRate = jobs.length ? Math.round((interviewCount / jobs.length) * 100) : 0
-  const filteredJobs = jobs.filter((job) => {
+  const { respondedCount, responseRate, interviewRate } = useMemo(() => {
+    const responded = jobs.filter((job) =>
+      ['Interviewing', 'Offer', 'Rejected'].includes(job.status),
+    ).length
+    const interviewed = jobs.filter((job) =>
+      ['Interviewing', 'Offer'].includes(job.status),
+    ).length
+    return {
+      respondedCount: responded,
+      responseRate: jobs.length ? Math.round((responded / jobs.length) * 100) : 0,
+      interviewRate: jobs.length ? Math.round((interviewed / jobs.length) * 100) : 0,
+    }
+  }, [jobs])
+  const filteredJobs = useMemo(() => jobs.filter((job) => {
     const searchable = `${job.title} ${job.company} ${job.source} ${job.location ?? ''}`.toLowerCase()
     return searchable.includes(query.toLowerCase()) && (statusFilter === 'All' || job.status === statusFilter)
-  })
+  }), [jobs, query, statusFilter])
 
   const openNewJob = () => {
+    dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(null)
     setDraft(emptyDraft())
     setError('')
@@ -107,6 +128,7 @@ export function DashboardApp() {
   }
 
   const openEditJob = (job: JobApplication) => {
+    dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(job)
     setDraft({
       title: job.title,
@@ -127,6 +149,36 @@ export function DashboardApp() {
   const closeDialog = () => {
     setDialogOpen(false)
     setError('')
+    setNotice('')
+  }
+
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeDialog()
+      return
+    }
+    if (event.key !== 'Tab') return
+
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.getClientRects().length > 0)
+    if (focusable.length === 0) {
+      event.preventDefault()
+      return
+    }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   const handleSaveJob = async (event: FormEvent<HTMLFormElement>) => {
@@ -139,13 +191,12 @@ export function DashboardApp() {
       return
     }
 
-    let appliedAt: string
-    try {
-      appliedAt = new Date(draft.appliedAt).toISOString()
-    } catch {
-      setError('Enter a valid application date.')
+    const appliedDate = new Date(draft.appliedAt)
+    if (!draft.appliedAt || Number.isNaN(appliedDate.getTime())) {
+      setError('Enter a valid application date and time.')
       return
     }
+    const appliedAt = appliedDate.toISOString()
 
     const timestamp = isoNow()
     const job: JobApplication = {
@@ -170,7 +221,10 @@ export function DashboardApp() {
     setSaving(true)
     try {
       await saveJob(job)
-      await refresh()
+      setJobs((current) => [
+        job,
+        ...current.filter((item) => item.id !== job.id),
+      ].sort((a, b) => Date.parse(b.appliedAt) - Date.parse(a.appliedAt)))
       setDialogOpen(false)
       setNotice(editingJob ? 'Application updated.' : 'Application added.')
     } catch {
@@ -181,12 +235,12 @@ export function DashboardApp() {
   }
 
   const handleDeleteJob = async (job: JobApplication) => {
-    if (!window.confirm(`Delete the application for ${job.title} at ${job.company}?`)) return
     setError('')
     setNotice('')
     try {
       await deleteJob(job.id)
-      await refresh()
+      setJobs((current) => current.filter((item) => item.id !== job.id))
+      setPendingDeleteId(null)
       setNotice('Application deleted.')
     } catch {
       setError('Could not delete this application.')
@@ -195,9 +249,10 @@ export function DashboardApp() {
 
   const handleStatusChange = async (job: JobApplication, status: JobStatus) => {
     setError('')
+    const updatedAt = isoNow()
     try {
-      await saveJob({ ...job, status, updatedAt: isoNow() })
-      setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status, updatedAt: isoNow() } : item))
+      await saveJob({ ...job, status, updatedAt })
+      setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status, updatedAt } : item))
     } catch {
       setError(`Could not update ${job.company}'s application status.`)
     }
@@ -223,9 +278,12 @@ export function DashboardApp() {
       </div>
       {items.length === 0 ? (
         <div className="empty-state">
-          {jobs.length === 0
-            ? 'No applications yet. Add one to start your pipeline.'
-            : 'No applications match these filters.'}
+          {jobs.length === 0 ? (
+            <>
+              <p>No applications yet. Add one to start your pipeline.</p>
+              <button type="button" className="primary-button" onClick={openNewJob}>Add your first application</button>
+            </>
+          ) : 'No applications match these filters.'}
         </div>
       ) : items.map((job) => {
         const jobUrl = safeUrl(job.applicationUrl || job.url)
@@ -236,6 +294,7 @@ export function DashboardApp() {
                 ? <a className="job-link" href={jobUrl} target="_blank" rel="noopener noreferrer">{job.title}</a>
                 : <strong>{job.title}</strong>}
               <span>{job.company}{job.location ? ` · ${job.location}` : ''}</span>
+              <span className="mobile-applied-date">Applied {formatDate(job.appliedAt)}</span>
             </div>
             <label className="status-control">
               <span className="sr-only">Status for {job.title} at {job.company}</span>
@@ -250,7 +309,14 @@ export function DashboardApp() {
             <span className="applied-date">{formatDate(job.appliedAt)}</span>
             <div className="row-actions">
               <button type="button" className="text-button" onClick={() => openEditJob(job)}>Edit</button>
-              <button type="button" className="text-button danger" onClick={() => void handleDeleteJob(job)}>Delete</button>
+              {pendingDeleteId === job.id ? (
+                <span className="delete-confirmation" role="group" aria-label={`Confirm deleting ${job.title} at ${job.company}`}>
+                  <button type="button" className="text-button danger" onClick={() => void handleDeleteJob(job)}>Confirm</button>
+                  <button type="button" className="text-button" onClick={() => setPendingDeleteId(null)}>Cancel</button>
+                </span>
+              ) : (
+                <button type="button" className="text-button danger" onClick={() => setPendingDeleteId(job.id)}>Delete</button>
+              )}
             </div>
           </div>
         )
@@ -302,7 +368,8 @@ export function DashboardApp() {
         {error && <p className="dashboard-feedback error" role="alert">{error}</p>}
         {notice && <p className="dashboard-feedback success" role="status">{notice}</p>}
 
-        {view === 'Overview' && (
+        {loading ? <p className="dashboard-feedback" role="status">Loading your applications…</p> : null}
+        {!loading && view === 'Overview' && (
           <>
             <section className="stats-grid" aria-label="Application totals">
               <article className="stat-card"><span>Total applied</span><strong>{summary.total}</strong><small>Across all roles</small></article>
@@ -315,7 +382,7 @@ export function DashboardApp() {
               <div className="insight-panel">
                 <h2>Top sources</h2>
                 {sourceCounts.length === 0 ? <p className="muted">Sources will appear as you add jobs.</p> : (
-                  <ul>{sourceCounts.slice(0, 3).map(([source, count]) => (
+                  <ul>{sourceCounts.map(([source, count]) => (
                     <li key={source}><span>{source}</span><strong>{Math.round((count / jobs.length) * 100)}%</strong></li>
                   ))}</ul>
                 )}
@@ -338,7 +405,7 @@ export function DashboardApp() {
           </>
         )}
 
-        {view === 'Applications' && (
+        {!loading && view === 'Applications' && (
           <section className="jobs-panel">
             <div className="panel-header">
               <div><h2>Applications</h2><span className="muted">{filteredJobs.length} of {jobs.length}</span></div>
@@ -364,7 +431,7 @@ export function DashboardApp() {
           </section>
         )}
 
-        {view === 'Insights' && (
+        {!loading && view === 'Insights' && (
           <section className="insight-grid">
             <article className="insight-panel">
               <h2>Application status</h2>
@@ -394,7 +461,7 @@ export function DashboardApp() {
           </section>
         )}
 
-        {view === 'Settings' && (
+        {!loading && view === 'Settings' && (
           <section className="settings-panel">
             <h2>Preferences</h2>
             <label className="setting-row">
@@ -424,7 +491,14 @@ export function DashboardApp() {
         <div className="dialog-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeDialog()
         }}>
-          <section className="job-dialog" role="dialog" aria-modal="true" aria-labelledby="job-dialog-title">
+          <section
+            ref={dialogRef}
+            className="job-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="job-dialog-title"
+            onKeyDown={handleDialogKeyDown}
+          >
             <div className="dialog-header">
               <div>
                 <p className="eyebrow">{editingJob ? 'Edit application' : 'New application'}</p>
