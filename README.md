@@ -1,40 +1,93 @@
-# Apply Pilot
+<p align="center">
+  <img src="public/icons/app-icon.svg" alt="Apply Pilot icon" width="88" />
+</p>
 
-**A simpler way to keep your job search organized.**
+<h1 align="center">Apply Pilot</h1>
 
-Apply Pilot is a Chrome extension that recognizes job information on supported listings and helps you keep track of the applications you submit. Spend less time re-entering details and more time focusing on the opportunities that matter.
+<p align="center">
+  <strong>A calmer, more organized way to manage your job search.</strong>
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/Imran-Shaik-01/apply-pilot/actions/workflows/ci.yml">
+    <img src="https://github.com/Imran-Shaik-01/apply-pilot/actions/workflows/ci.yml/badge.svg?branch=main" alt="Build and test status" />
+  </a>
+  <img src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white" alt="Chrome Manifest V3" />
+  <img src="https://img.shields.io/badge/TypeScript-powered-3178C6?logo=typescript&logoColor=white" alt="Powered by TypeScript" />
+</p>
 
-- **Capture job details** — Detects available information such as role, company, location, work mode, salary, and employment type.
-- **Review before saving** — Prefills the application form so you can check or edit details before adding a role to your records.
-- **Track your progress** — See saved applications together in a dashboard and update their status as your search moves forward.
-- **Stay on top of today** — Keep an at-a-glance count of applications saved today.
-- **Choose when capture is enabled** — Turn job-page capture on or off from the extension.
+Apply Pilot is a Chrome extension for capturing useful details from supported job listings and keeping your applications organized. Spend less time copying information between pages and more time focusing on the roles you want.
 
-## How it works
+## What you can do
 
-1. Visit a supported job listing.
-2. Open Apply Pilot to prefill the details available on that page.
-3. Review or edit the information, then save the application.
-4. Manage your saved roles and their status from the dashboard.
-
-## Install from a ZIP
-
-Download and extract the repository ZIP, then choose its top-level folder in `chrome://extensions` → **Load unpacked**. The ready-to-load extension build is included in the repository.
-
-## Technology
-
-| Technology | Purpose |
+| Capability | How it helps |
 | --- | --- |
-| Chrome Extensions Manifest V3 | Browser extension platform |
-| TypeScript and React | Application logic and user interface |
-| Vite | Build tooling |
-| Dexie and IndexedDB | Local application storage |
-| Zod | Data validation |
+| **Capture job details** | Detect available role, company, location, work mode, salary, and employment information from a job page. |
+| **Review before saving** | Check and edit the details in the popup before adding an application to your records. |
+| **Manage your application pipeline** | View saved roles in the dashboard, search and filter them, and update each application’s status. |
+| **See your progress** | Review daily, weekly, and monthly totals, along with response and interview insights. |
+| **Control page capture** | Enable or disable job-page capture in your preferences. |
 
-## Your data
+## Getting started
 
-Application records and settings are stored locally in your browser. Apply Pilot does not require an account or a remote service to manage your applications.
+### Install from the repository ZIP
 
-To detect job information, Apply Pilot needs permission to inspect pages you visit over HTTP or HTTPS. Page analysis and application tracking happen locally in the extension; job-page content is not sent to an Apply Pilot server.
+The repository includes a ready-to-load extension build, so you don’t need to install development tools to try it.
+
+1. Download the repository as a ZIP and extract it.
+2. Open `chrome://extensions` in Chrome and turn on **Developer mode**.
+3. Select **Load unpacked** and choose the extracted repository’s top-level folder.
+
+### Use Apply Pilot
+
+1. Open a supported job listing.
+2. Select the Apply Pilot icon to review the details detected on the page.
+3. Edit anything that needs correction, then save the application.
+4. Open the dashboard to search, filter, and update your saved applications.
+
+## Privacy by design
+
+Application records and preferences are stored locally in your browser. Apply Pilot does not require an account, and job-page details are not sent to an Apply Pilot server.
+
+To detect job information, the extension requests access to pages visited over HTTP or HTTPS. Page analysis takes place in the browser. You can turn capture off in the extension’s preferences.
+
+## Built with
+
+- **Chrome Extensions Manifest V3** — extension platform and browser APIs
+- **TypeScript and React** — typed application logic and user interface
+- **Vite** — development and production builds
+- **Dexie with IndexedDB** — local storage for application records
+- **Zod** — validation for settings and application data
+
+## Development
+
+Requires a Node.js version supported by the project’s `engines` setting.
+
+```bash
+npm ci
+npm run dev
+```
+
+Useful project checks:
+
+```bash
+npm test       # Run unit tests
+npm run lint   # Check source code
+npm run build  # Type-check, build, and verify the extension package
+```
+
+The production build is written to `dist/`. The build check verifies that the repository and built manifests point to files that exist and that content scripts are loadable by Chrome.
+
+## Planned for a future release
+
+These are roadmap ideas and are **not available in the current version**:
+
+- **Application submission assistance** — streamline submitting applications on supported job sites, with review and confirmation before submission.
+- **Personal-details autofill** — save a user profile and use it to fill common fields in supported application forms.
+- **Follow-up reminders** — schedule reminders for applications that need a follow-up.
+
+---
+
+<p align="center">
+  Built to make every application easier to keep track of.
+</p>
