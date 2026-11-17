@@ -8,46 +8,15 @@ import {
   type JobStatus,
   type Settings,
 } from '../shared/types'
-import { canonicalizeJobUrl, formatDate, getAppSummary, getStableJobId, isoNow, safeUrl } from '../shared/utils'
+import { canonicalizeJobUrl, formatDate, getAppSummary, isoNow, safeUrl } from '../shared/utils'
+import {
+  emptyJobDraft,
+  jobApplicationFromDraft,
+  jobDraftFromApplication,
+  type JobDraft,
+} from './job-form'
 
 type View = 'Overview' | 'Applications' | 'Insights' | 'Settings'
-
-type JobDraft = {
-  title: string
-  company: string
-  url: string
-  applicationUrl: string
-  platform: string
-  recruiter: string
-  status: JobStatus
-  appliedAt: string
-  location: string
-  workMode: string
-  salary: string
-  employmentType: string
-  notes: string
-}
-
-const localDateTimeValue = (date = new Date()) => {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return localDate.toISOString().slice(0, 16)
-}
-
-const emptyDraft = (): JobDraft => ({
-  title: '',
-  company: '',
-  url: '',
-  applicationUrl: '',
-  platform: '',
-  recruiter: '',
-  status: 'Applied',
-  appliedAt: localDateTimeValue(),
-  location: '',
-  workMode: '',
-  salary: '',
-  employmentType: '',
-  notes: '',
-})
 
 const views: View[] = ['Overview', 'Applications', 'Insights', 'Settings']
 
@@ -138,7 +107,7 @@ export function DashboardApp() {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'All'>('All')
   const [editingJob, setEditingJob] = useState<JobApplication | null>(null)
-  const [draft, setDraft] = useState<JobDraft>(emptyDraft())
+  const [draft, setDraft] = useState<JobDraft>(emptyJobDraft())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -212,7 +181,7 @@ export function DashboardApp() {
   const openNewJob = useCallback(() => {
     dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(null)
-    setDraft(emptyDraft())
+    setDraft(emptyJobDraft())
     setError('')
     setDialogOpen(true)
   }, [])
@@ -220,21 +189,7 @@ export function DashboardApp() {
   const openEditJob = useCallback((job: JobApplication) => {
     dialogTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setEditingJob(job)
-    setDraft({
-      title: job.title,
-      company: job.company,
-      url: job.url,
-      applicationUrl: job.applicationUrl ?? job.url,
-      platform: job.platform ?? '',
-      recruiter: job.recruiter ?? '',
-      status: job.status,
-      appliedAt: localDateTimeValue(new Date(job.appliedAt)),
-      location: job.location ?? '',
-      workMode: job.workMode ?? '',
-      salary: job.salary ?? '',
-      employmentType: job.employmentType ?? '',
-      notes: job.notes ?? '',
-    })
+    setDraft(jobDraftFromApplication(job))
     setError('')
     setDialogOpen(true)
   }, [])
@@ -293,32 +248,14 @@ export function DashboardApp() {
     const applicationUrl = canonicalizeJobUrl(draft.applicationUrl.trim()) || url
 
     const timestamp = isoNow()
-    const statusHistory = editingJob?.statusHistory ?? (
-      editingJob ? [{ status: editingJob.status, changedAt: editingJob.updatedAt }] : []
-    )
-    const job: JobApplication = {
-      id: editingJob?.id ?? getStableJobId(url),
-      jobId: editingJob?.jobId,
-      title: draft.title.trim(),
-      company: draft.company.trim(),
+    const job = jobApplicationFromDraft(
+      draft,
+      editingJob,
       url,
       applicationUrl,
-      status: draft.status,
-      statusHistory: draft.status === editingJob?.status
-        ? statusHistory
-        : [...statusHistory, { status: draft.status, changedAt: timestamp }],
-      source: editingJob?.source ?? new URL(url).hostname,
       appliedAt,
-      createdAt: editingJob?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-      location: draft.location.trim() || undefined,
-      workMode: draft.workMode.trim() || undefined,
-      salary: draft.salary.trim() || undefined,
-      employmentType: draft.employmentType.trim() || undefined,
-      notes: draft.notes.trim() || undefined,
-      recruiter: draft.recruiter.trim() || undefined,
-      platform: draft.platform.trim() || undefined,
-    }
+      timestamp,
+    )
 
     setSaving(true)
     try {

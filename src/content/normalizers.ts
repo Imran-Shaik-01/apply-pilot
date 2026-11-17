@@ -29,7 +29,13 @@ export const normalizeText = (value: unknown): string => {
         .join(', ')
     const currency = normalizeText(record.currency)
     const unit = normalizeText(record.unitText)
-    return [currency, content, unit].filter(Boolean).join(' ')
+    const comparableContent = content.toLowerCase().replace(/[.\s]/g, '')
+    const parts = [
+      currency && !comparableContent.includes(currency.toLowerCase().replace(/[.\s]/g, '')) ? currency : '',
+      content,
+      unit && !comparableContent.includes(unit.toLowerCase().replace(/[.\s]/g, '')) ? unit : '',
+    ]
+    return parts.filter(Boolean).join(' ')
   }
 
   return ''
@@ -60,4 +66,23 @@ export const normalizeEmploymentType = (value: unknown) => {
     return labels[code] ?? part
   }
   return text.split(/,\s*/).map(normalizeCode).join(', ')
+}
+
+const confirmationPattern =
+  /(successfully applied|application (has been |was )?(submitted|sent|received|complete[d]?)|thank(s| you) for applying|you('ve| have) applied|you applied|applied successfully|application (is )?done)/i
+
+export const isApplicationConfirmation = (text: string) => confirmationPattern.test(text)
+export const isSubmissionMessage = isApplicationConfirmation
+
+export const workModeFromLocation = (value: unknown) => {
+  const text = normalizeText(value)
+  if (/\bremote\b/i.test(text)) return 'Remote'
+  if (/\bhybrid\b/i.test(text)) return 'Hybrid'
+  if (/\b(on[- ]?site|on premises)\b/i.test(text)) return 'On-site'
+  return ''
+}
+
+export const getConfirmationTitle = (text: string) => {
+  const match = text.match(/(?:successfully applied to|applied for)\s+['"“](.+?)['"”]/i)
+  return match?.[1]?.trim() ?? ''
 }

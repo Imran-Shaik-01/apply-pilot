@@ -27,7 +27,7 @@ for (const { path, root, label } of manifests) {
   for (const script of manifest.content_scripts ?? []) {
     for (const file of script.js ?? []) {
       const source = await readFile(resolve(root, file), 'utf8')
-      if (/^\s*import\s/m.test(source)) {
+      if (/^\s*(?:import|export)(?:\s|\{|\*|\()/m.test(source)) {
         throw new Error(`The ${label} content script must be standalone: ${file}`)
       }
     }

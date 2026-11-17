@@ -11,6 +11,11 @@ describe('extension interfaces', () => {
     expect(markup).toContain('Apply Pilot')
     expect(markup).toContain('Save application')
     expect(markup).toContain('Automatic capture')
+    expect(markup).toContain('aria-label="Refresh draft"')
+    expect(markup).toContain('refresh-icon')
+    expect(markup).not.toContain('Draft cleared')
+    expect(markup).not.toContain('Not this job')
+    expect(markup).not.toContain('Tracking:')
   })
 
   it('renders the dashboard navigation and loading state', () => {

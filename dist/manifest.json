@@ -1,31 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Apply Pilot",
-  "version": "1.0.0",
-  "minimum_chrome_version": "92",
+  "version": "1.1.0",
+  "minimum_chrome_version": "127",
   "description": "Capture job details and track applications locally.",
   "permissions": [
     "activeTab",
     "storage",
     "alarms",
     "contextMenus",
-    "scripting"
+    "scripting",
+    "notifications"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "host_permissions": [
-    "https://*.linkedin.com/*",
-    "https://*.indeed.com/*",
-    "https://*.glassdoor.com/*",
-    "https://*.ziprecruiter.com/*",
-    "https://*.monster.com/*",
-    "https://*.greenhouse.io/*",
-    "https://*.lever.co/*",
-    "https://*.ashbyhq.com/*",
-    "https://*.smartrecruiters.com/*",
-    "https://*.workable.com/*",
-    "https://*.myworkdayjobs.com/*"
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -34,17 +26,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.linkedin.com/*",
-        "https://*.indeed.com/*",
-        "https://*.glassdoor.com/*",
-        "https://*.ziprecruiter.com/*",
-        "https://*.monster.com/*",
-        "https://*.greenhouse.io/*",
-        "https://*.lever.co/*",
-        "https://*.ashbyhq.com/*",
-        "https://*.smartrecruiters.com/*",
-        "https://*.workable.com/*",
-        "https://*.myworkdayjobs.com/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"

@@ -16,10 +16,16 @@ describe('safeUrl', () => {
 
 describe('canonicalizeJobUrl', () => {
   it('removes tracking parameters and creates stable identifiers', () => {
-    const url = canonicalizeJobUrl('https://jobs.example/roles/1?utm_source=mail&ref=campaign&id=42')
-    expect(url).toBe('https://jobs.example/roles/1?ref=campaign&id=42')
+    const url = canonicalizeJobUrl('https://jobs.example/roles/1?utm_source=mail&ref=campaign&id=42#details')
+    expect(url).toBe('https://jobs.example/roles/1?id=42')
     expect(getStableJobId(url)).toBe('jobs.example-/roles/1')
     expect(getStableJobId(url, 'REQ-42')).toBe('jobs.example-REQ-42')
+  })
+
+  it('keeps job-identifying query parameters', () => {
+    expect(canonicalizeJobUrl(
+      'https://jobs.example/jobs?currentJobId=42&jk=abc&gh_jid=77&trackingId=feed#overview',
+    )).toBe('https://jobs.example/jobs?currentJobId=42&jk=abc&gh_jid=77')
   })
 
   it('rejects unsupported URLs', () => {

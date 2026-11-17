@@ -1,5 +1,9 @@
-import { normalizeEmploymentType, normalizeText, normalizeWorkMode } from './normalizers'
-import { canonicalizeJobUrl, getStableJobId } from '../shared/utils'
+import {
+  normalizeEmploymentType,
+  normalizeText,
+  normalizeWorkMode,
+  workModeFromLocation,
+} from './normalizers'
 
 export type CapturedJob = {
   id: string
@@ -21,6 +25,32 @@ export type CapturedJob = {
 }
 
 const isoNow = () => new Date().toISOString()
+
+const canonicalizeJobUrl = (value: string): string => {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_.+|trk|trackingid|refid|ref|src|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
+        url.searchParams.delete(key)
+      }
+    }
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+const getStableJobId = (value: string, jobId?: string): string => {
+  try {
+    const url = new URL(value)
+    const path = url.pathname.replace(/\/+$/, '') || '/'
+    return `${url.hostname}-${jobId || path}`
+  } catch {
+    return ''
+  }
+}
 
 const safeUrl = (value: string | undefined) => {
   if (!value) return ''
@@ -50,11 +80,15 @@ const findJobPosting = (value: unknown): Record<string, unknown> | null => {
 
 const jobIdCache = new Map<string, string>()
 
-const getPageJobId = (url: string) => {
+const getPageJobId = (url: string, scope: Element) => {
   const cached = jobIdCache.get(url)
   if (cached !== undefined) return cached
 
-  const jobId = document.body.innerText.match(/(REQ[-_ ]?[A-Z0-9]+|JOB[-_ ]?[A-Z0-9]+|[A-Z]{2,}-\d+)/)?.[0] ?? ''
+  const scopedContent = scope.cloneNode(true) as Element
+  for (const node of scopedContent.querySelectorAll(
+    'aside, [hidden], [aria-hidden="true"], [class*="recommend" i], [class*="similar" i], [class*="suggest" i], [data-testid*="recommend" i], [data-testid*="similar" i]',
+  )) node.remove()
+  const jobId = scopedContent.textContent?.match(/(REQ[-_ ]?[A-Z0-9]+|JOB[-_ ]?[A-Z0-9]+|[A-Z]{2,}-\d+)/)?.[0] ?? ''
   if (jobIdCache.size >= 20) {
     const oldestUrl = jobIdCache.keys().next().value
     if (oldestUrl !== undefined) jobIdCache.delete(oldestUrl)
@@ -63,11 +97,19 @@ const getPageJobId = (url: string) => {
   return jobId
 }
 
-export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boolean } => {
+export const attemptCapture = (): {
+  data: Partial<CapturedJob>
+  isJobPage: boolean
+  strongSignal: boolean
+} => {
+  const initialMainRegion = document.querySelector('main, [role="main"], article')
+  const initialHeading = normalizeText(initialMainRegion?.querySelector('h1, h2')?.textContent)
+  const confirmationHeading =
+    /^(apply|application)\s+(confirmation|submitted|success)|^thank you for applying/i.test(initialHeading)
   const jsonNodes = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
   let structured: Record<string, unknown> | null = null
 
-  for (const node of jsonNodes) {
+  for (const node of confirmationHeading ? [] : jsonNodes) {
     const text = node.textContent ?? ''
     if (!text) continue
     try {
@@ -86,10 +128,15 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
     return tag?.getAttribute('content') ?? ''
   }
 
-  const getText = (...selectors: string[]) => {
+  const isExcluded = (node: Element) =>
+    Boolean(node.closest(
+      '[hidden], [aria-hidden="true"], aside, [class*="recommend"], [class*="similar"], [data-testid*="recommend"], [data-testid*="similar"]',
+    ))
+
+  const getText = (root: ParentNode, ...selectors: string[]) => {
     for (const selector of selectors) {
-      for (const node of document.querySelectorAll(selector)) {
-        if (node.closest('[hidden], [aria-hidden="true"]')) continue
+      for (const node of root.querySelectorAll(selector)) {
+        if (isExcluded(node)) continue
         const value = normalizeText(
           node.textContent ||
             node.getAttribute('data-company-name') ||
@@ -98,14 +145,31 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
             node.getAttribute('alt') ||
             node.getAttribute('content'),
         )
-        if (value && value.length <= 300) return value
+        if (value && value.length <= 500) return value
       }
     }
     return ''
   }
 
+  const getTextNode = (root: ParentNode, ...selectors: string[]) => {
+    for (const selector of selectors) {
+      for (const node of root.querySelectorAll(selector)) {
+        if (isExcluded(node)) continue
+        const text = normalizeText(
+          node.textContent ||
+            node.getAttribute('aria-label') ||
+            node.getAttribute('title') ||
+            node.getAttribute('content'),
+        )
+        if (text && text.length <= 500) return node
+      }
+    }
+    return null
+  }
+
   const structuredTitle = normalizeText(structured?.title) || normalizeText(structured?.headline)
-  const strongTitle = getText(
+  const titleSearchRoot = document.querySelector('main, [role="main"], article') ?? document
+  const strongTitleNode = getTextNode(titleSearchRoot,
     '[data-testid="job-title"]',
     '[data-test="job-title"]',
     '[data-automation-id="jobPostingHeader"]',
@@ -125,10 +189,27 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
     'h1[itemprop="title"]',
     '[itemprop="title"]',
   )
+  const strongTitle = normalizeText(strongTitleNode?.textContent)
+  const structuredRegion = document.querySelector(
+    '[itemtype*="JobPosting"], [data-testid*="job-detail"], [class*="job-detail"], [class*="jd-container"]',
+  )
+  const mainRegion = document.querySelector('main, [role="main"], article')
+  const titleMainRegion = strongTitleNode?.closest('main, [role="main"], article')
+  const titleContainer = strongTitleNode?.closest(
+    'article, [itemtype*="JobPosting"], [data-testid*="job-detail"], [class*="job-detail"], [class*="jobDetail"], [class*="jd-container"], [class*="job-description"]',
+  )
+  const captureScope =
+    titleContainer ??
+    titleMainRegion ??
+    structuredRegion ??
+    mainRegion ??
+    strongTitleNode?.parentElement ??
+    document.body
+  const scopedText = (...selectors: string[]) => getText(captureScope, ...selectors)
   const specificTitle =
     strongTitle ||
-    getText('.job-title', '.job__title', '.job-title-heading', '.position-title', '.job-details-title')
-  const pageHeading = getText('h1')
+    scopedText('.job-title', '.job__title', '.job-title-heading', '.position-title', '.job-details-title')
+  const pageHeading = scopedText('h1')
 
   const hiringOrganization = structured?.hiringOrganization
   const structuredCompany = normalizeText(
@@ -138,7 +219,7 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
   )
   const company =
     structuredCompany ||
-    getText(
+    scopedText(
       '[data-testid="company-name"]',
       '[data-test="company-name"]',
       '[data-automation-id="jobPostingCompany"]',
@@ -160,7 +241,7 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
 
   const hostname = window.location.hostname.toLowerCase()
   const isJobBoardHost =
-    /(^|\.)linkedin\.com$|(^|\.)indeed\.com$|(^|\.)glassdoor\.com$|(^|\.)ziprecruiter\.com$|(^|\.)monster\.com$|(^|\.)greenhouse\.io$|(^|\.)lever\.co$|(^|\.)ashbyhq\.com$|(^|\.)smartrecruiters\.com$|(^|\.)workable\.com$|(^|\.)myworkdayjobs\.com$/.test(
+    /(^|\.)linkedin\.com$|(^|\.)indeed\.com$|(^|\.)glassdoor\.com$|(^|\.)ziprecruiter\.com$|(^|\.)monster\.com$|(^|\.)greenhouse\.io$|(^|\.)lever\.co$|(^|\.)ashbyhq\.com$|(^|\.)smartrecruiters\.com$|(^|\.)workable\.com$|(^|\.)myworkdayjobs\.com$|(^|\.)naukri\.com$|(^|\.)foundit\.(in|com)$|(^|\.)wellfound\.com$|(^|\.)internshala\.com$/.test(
       hostname,
     )
   const isAtsHost =
@@ -181,15 +262,19 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
     }
   })()
   const resolvedCompany = company || siteCompany || atsSlug
-  const genericHeading = /^(jobs?|careers?|career opportunities|open positions|job openings)$/i.test(pageHeading)
+  const genericHeading =
+    /^(jobs?|careers?|career opportunities|open positions|job openings|apply confirmation|application confirmation|application submitted|thank you)$/i.test(pageHeading)
   const jobPath =
     /(?:^|\/)(?:jobs?|positions?|openings?|requisitions?)\/[^/]+/i.test(window.location.pathname) ||
     /\/careers?\/[^/]+\/(?:jobs?|positions?)\/[^/]+/i.test(window.location.pathname)
   const isJobPage = Boolean(
+    !confirmationHeading && (
     structured ||
       strongTitle ||
-      (jobPath && (specificTitle || pageHeading) && resolvedCompany && !genericHeading),
+      (jobPath && (specificTitle || pageHeading) && resolvedCompany && !genericHeading)
+    ),
   )
+  const strongSignal = Boolean(structured || strongTitle)
   const title =
     structuredTitle ||
     specificTitle ||
@@ -199,7 +284,7 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
 
   const locationText =
     normalizeText(structured?.jobLocation) ||
-    getText(
+    scopedText(
       '[data-testid="job-location"]',
       '[data-automation-id="locations"]',
       '[data-qa="job-location"]',
@@ -214,14 +299,15 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
     ) ||
     ''
   const summaryValues = Array.from(
-    document.querySelectorAll('[data-testid="structured-job-summary"] div'),
+    captureScope.querySelectorAll('[data-testid="structured-job-summary"] div'),
   )
+    .filter((node) => !isExcluded(node))
     .filter((node) => node.childElementCount === 0)
     .map((node) => normalizeText(node.textContent))
     .filter(Boolean)
   const employmentType = normalizeEmploymentType(
     structured?.employmentType ||
-      getText(
+      scopedText(
         '[data-testid="employment-type"]',
         '[data-automation-id="jobType"]',
         '[data-qa="employment-type"]',
@@ -238,10 +324,10 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
   )
   const salary =
     normalizeText(structured?.baseSalary) ||
-    getText('[data-testid="salary"]', '[data-qa="salary"]', '.salary-range', '.salary', '[itemprop="baseSalary"]')
-  const workMode = normalizeWorkMode(
+    scopedText('[data-testid="salary"]', '[data-qa="salary"]', '.salary-range', '.salary', '[itemprop="baseSalary"]')
+  const workModeValue =
     structured?.jobLocationType ||
-      getText(
+      scopedText(
         '[data-testid="work-mode"]',
         '[data-automation-id="workLocation"]',
         '[data-qa="work-mode"]',
@@ -249,21 +335,58 @@ export const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boole
         '.remote-hybrid',
         '.posting-categories .workplaceTypes',
       ) ||
-      summaryValues.find((value) => /\b(remote|hybrid|on[- ]?site|on premises)\b/i.test(value)),
-  )
+      summaryValues.find((value) => /\b(remote|hybrid|on[- ]?site|on premises)\b/i.test(value))
+  const workMode =
+    normalizeWorkMode(workModeValue) ||
+    workModeFromLocation(locationText)
 
   const identifier = structured?.identifier
   const identifierValue =
     identifier && typeof identifier === 'object'
       ? normalizeText((identifier as Record<string, unknown>).value)
       : normalizeText(identifier)
-  const jobId = identifierValue || (isJobPage ? getPageJobId(window.location.href) : '')
-  const url = safeUrl(window.location.href)
+  const jobId = identifierValue || (isJobPage ? getPageJobId(window.location.href, captureScope) : '')
+  const pageUrl = new URL(window.location.href)
+  let url = safeUrl(window.location.href)
+  const structuredUrl = normalizeText(structured?.url)
+  if (structuredUrl) {
+    try {
+      const candidate = new URL(structuredUrl, pageUrl)
+      const currentPath = pageUrl.pathname.replace(/\/+$/, '')
+      const candidatePath = candidate.pathname.replace(/\/+$/, '')
+      const currentIdentity = `${pageUrl.pathname}${pageUrl.search}`.toLowerCase()
+      const candidateIdentity = `${candidate.pathname}${candidate.search}`.toLowerCase()
+      const structuredIdInBoth = identifierValue &&
+        currentIdentity.includes(identifierValue.toLowerCase()) &&
+        candidateIdentity.includes(identifierValue.toLowerCase())
+      const matchingJobParameter = [
+        'currentJobId',
+        'jk',
+        'gh_jid',
+        'jobId',
+        'reqId',
+        'requisitionId',
+      ].some((key) => {
+        const currentValue = pageUrl.searchParams.get(key)
+        return currentValue !== null && candidate.searchParams.get(key) === currentValue
+      })
+      const idInCandidate = structuredIdInBoth || matchingJobParameter
+      if (
+        candidate.origin === pageUrl.origin &&
+        (currentPath === candidatePath || idInCandidate)
+      ) {
+        url = canonicalizeJobUrl(candidate.toString())
+      }
+    } catch {
+      url = safeUrl(window.location.href)
+    }
+  }
   const source = window.location.hostname
   const now = isoNow()
 
   return {
     isJobPage,
+    strongSignal,
     data: {
       id: getStableJobId(url, jobId || undefined),
       jobId: jobId || undefined,

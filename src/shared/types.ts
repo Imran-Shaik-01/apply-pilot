@@ -41,15 +41,56 @@ export interface Settings {
   weekStartDay: number
 }
 
-export interface PopupDraft {
+export const draftFields = [
+  'title',
+  'company',
+  'jobUrl',
+  'location',
+  'workMode',
+  'salary',
+  'employmentType',
+] as const
+
+export type DraftField = (typeof draftFields)[number]
+
+export interface DraftFields {
   title: string
   company: string
   location: string
   workMode: string
   salary: string
   employmentType: string
-  pageUrl: string
-  autoCaptured?: boolean
+}
+
+export interface DraftCapture {
+  id?: string
+  jobId?: string
+  fields: DraftFields
+  jobUrl: string
+  sourceHost: string
+}
+
+export interface GlobalDraft {
+  status: 'provisional' | 'locked' | 'submitted'
+  fields: DraftFields
+  userEdited: Partial<Record<DraftField, true>>
+  jobUrl: string
+  currentPageUrl: string
+  sourceHost: string
+  id?: string
+  jobId?: string
+  createdAt: string
+  updatedAt: string
+  lockedAt?: string
+  submittedAt?: string
+  notified?: boolean
+  expiresAt: number
+  flowTabIds?: number[]
+}
+
+export interface GlobalDraftState {
+  draft?: GlobalDraft
+  suppressedJobUrl?: string
 }
 
 export const defaultSettings: Settings = {

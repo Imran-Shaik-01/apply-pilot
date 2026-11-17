@@ -16,10 +16,11 @@ export const canonicalizeJobUrl = (value: string): string => {
 
   const url = new URL(parsed)
   for (const key of [...url.searchParams.keys()]) {
-    if (/^(utm_.+|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
+    if (/^(utm_.+|trk|trackingid|refid|ref|src|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
       url.searchParams.delete(key)
     }
   }
+  url.hash = ''
   return url.toString()
 }
 

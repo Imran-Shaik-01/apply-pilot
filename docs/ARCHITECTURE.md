@@ -1,22 +1,31 @@
 # Architecture
 
-## Overview
-Apply Pilot uses a Manifest V3 extension structure with a stateless background service worker, content script capture logic, popup for quick actions, and a dashboard for overview and history.
+## Runtime
 
-## Directories
-- `src/background` — service worker lifecycle and message handling
-- `src/content` — job page detection and capture prompts
-- `src/dashboard` — dashboard UI for saved applications
-- `src/popup` — popup UI for quick add and summary
-- `src/shared` — types, Zod validation, storage utilities, and page parsing helpers
+Apply Pilot is a Manifest V3 Chrome extension. The background service worker coordinates extension messages, validated draft state, application persistence, expiry, and notifications. Lifecycle and message listeners are registered at module scope so Chrome can wake the worker for those events.
 
-## Storage plan
-- Jobs: IndexedDB via Dexie
-- Settings: Chrome storage with a local fallback for browser preview
-- Job records use a stable identifier and preserve status history; schema upgrades are handled by Dexie migrations.
-- Popup and dashboard writes go through the service worker. The dashboard observes IndexedDB changes with Dexie live queries.
+The standalone content script runs on HTTP and HTTPS pages. It reads page markup locally, prioritizes structured job data, and reports captures and application-flow events to the worker. Automatic capture updates a draft; it does not save an application.
 
-## Why this stack
-- React + Vite provides a fast UI workflow for the dashboard and popup.
-- Dexie keeps the storage layer simple and browser-native.
-- Zod helps validate page data and settings without over-engineering the project.
+The popup is the review-and-save surface. It first reads the persisted global draft or a per-URL cache in `chrome.storage.session`, then verifies the draft against the active page. User-edited fields and locked/submitted drafts take precedence over later page captures. Popup edits are debounced and flushed on blur and page hide.
+
+## Persistence
+
+- **Applications:** Dexie/IndexedDB, with schema migrations and status history. Popup and dashboard writes are routed through the service worker; the dashboard uses Dexie `liveQuery` for cross-context updates.
+- **Settings and active draft:** `chrome.storage.local`. Draft reads and writes are serialized in the service worker to prevent lost updates. Provisional drafts expire after 24 hours; locked or submitted drafts expire after seven days.
+- **Popup refill cache:** `chrome.storage.session`, indexed by canonical page URL and bounded to 20 recent entries. It expires with its draft and is cleared on Save or when Capture is disabled. A cache entry can restore unsent user edits, but cannot overwrite a newer or unrelated draft.
+
+The popup and dashboard validate messages and stored records with Zod. Pure draft transitions live in `src/shared/draft-state.ts` and are tested independently.
+
+## Project layout
+
+- `src/background` — MV3 worker, message handling, draft serialization, expiry, and submission notification fallback
+- `src/content` — standalone DOM extraction, apply-flow locking, and confirmation detection
+- `src/popup` — fast refill, draft review/edit, refresh, and explicit Save action
+- `src/dashboard` — live application list, insights, preferences, and edit dialog
+- `src/shared` — types, schemas, storage clients, draft state, and shared utilities
+- `public` — source manifest and extension assets
+- `dist` — generated production extension
+
+## Build and verification
+
+`npm run build` runs the TypeScript project build, bundles popup/dashboard/background/content scripts, and verifies that the generated extension manifests reference available files and that the content script remains standalone.
