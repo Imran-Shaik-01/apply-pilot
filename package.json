@@ -8,8 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "build": "tsc -b && vite build && node scripts/verify-extension.mjs",
+    "lint": "oxlint --ignore-pattern 'dist/**'",
     "test": "vitest run",
     "preview": "vite preview"
   },

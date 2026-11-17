@@ -19,6 +19,10 @@ Apply Pilot is a Chrome extension that recognizes job information on supported l
 3. Review or edit the information, then save the application.
 4. Manage your saved roles and their status from the dashboard.
 
+## Install from a ZIP
+
+Download and extract the repository ZIP, then choose its top-level folder in `chrome://extensions` → **Load unpacked**. The ready-to-load extension build is included in the repository.
+
 ## Technology
 
 | Technology | Purpose |
