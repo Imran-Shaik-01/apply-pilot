@@ -1,10 +1,18 @@
-export type JobStatus =
-  | 'Applied'
-  | 'Interviewing'
-  | 'Offer'
-  | 'Rejected'
-  | 'Withdrawn'
-  | 'Ghosted'
+export const statusOptions = [
+  'Applied',
+  'Interviewing',
+  'Offer',
+  'Rejected',
+  'Withdrawn',
+  'Ghosted',
+] as const
+
+export type JobStatus = (typeof statusOptions)[number]
+
+export interface StatusChange {
+  status: JobStatus
+  changedAt: string
+}
 
 export interface JobApplication {
   id: string
@@ -14,6 +22,7 @@ export interface JobApplication {
   url: string
   applicationUrl?: string
   status: JobStatus
+  statusHistory?: StatusChange[]
   source: string
   appliedAt: string
   createdAt: string
@@ -47,12 +56,3 @@ export const defaultSettings: Settings = {
   enabled: true,
   weekStartDay: 1,
 }
-
-export const statusOptions: JobStatus[] = [
-  'Applied',
-  'Interviewing',
-  'Offer',
-  'Rejected',
-  'Withdrawn',
-  'Ghosted',
-]

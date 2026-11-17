@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defaultSettings, type PopupDraft, type Settings } from '../shared/types'
 import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
-import { jobSchema, settingsSchema } from '../shared/schema'
+import { jobSchema } from '../shared/schema'
 import { isoNow } from '../shared/utils'
 
 const popupDraftTtlMs = 24 * 60 * 60 * 1000
@@ -22,12 +22,6 @@ const saveJobPayloadSchema = jobSchema.omit({ createdAt: true, updatedAt: true }
 })
 
 const deleteJobPayloadSchema = z.object({ id: z.string().min(1) })
-
-const openDashboard = () => {
-  if (typeof chrome !== 'undefined' && chrome.tabs) {
-    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') })
-  }
-}
 
 const getCapturePageKey = (pageUrl: string) => {
   const url = new URL(pageUrl)
@@ -191,14 +185,14 @@ chrome.runtime.onInstalled.addListener(async () => {
         title: 'Save this job',
         contexts: ['page'],
       })
-
-      chrome.runtime.onStartup.addListener(() => {
-        void cleanupExpiredPopupDraft().catch((error: unknown) => {
-          console.error('Apply Pilot could not clean up expired job-page data.', error)
-        })
-      })
     })
   }
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void cleanupExpiredPopupDraft().catch((error: unknown) => {
+    console.error('Apply Pilot could not clean up expired job-page data.', error)
+  })
 })
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -207,10 +201,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   ;(async () => {
     try {
       switch (type) {
-        case 'GET_SETTINGS': {
-          sendResponse({ ok: true, data: await getSettings() })
-          break
-        }
         case 'AUTO_CAPTURE_PAGE': {
           sendResponse({
             ok: true,
@@ -228,12 +218,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ok: true,
             cleared: await serializeCaptureOperation(() => clearReloadedAutomaticCapture(payload, sender)),
           })
-          break
-        }
-        case 'UPDATE_SETTINGS': {
-          const settingsPatch = settingsSchema.partial().parse(payload)
-          const settings = await updateSettings(settingsPatch)
-          sendResponse({ ok: true, data: settings })
           break
         }
         case 'GET_JOBS': {
@@ -254,11 +238,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'DELETE_JOB': {
           const { id } = deleteJobPayloadSchema.parse(payload)
           await deleteJob(id)
-          sendResponse({ ok: true })
-          break
-        }
-        case 'OPEN_DASHBOARD': {
-          openDashboard()
           sendResponse({ ok: true })
           break
         }
@@ -286,16 +265,6 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === 'popup-draft-expiry') {
     void cleanupExpiredPopupDraft().catch((error: unknown) => {
       console.error('Apply Pilot could not clean up expired job-page data.', error)
-    })
-    return
-  }
-
-  if (alarm.name === 'follow-up') {
-    chrome.notifications?.create({
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/app-128.png'),
-      title: 'Apply Pilot reminder',
-      message: 'A role in your pipeline may need a follow-up.',
     })
   }
 })

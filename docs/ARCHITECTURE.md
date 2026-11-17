@@ -13,6 +13,8 @@ Apply Pilot uses a Manifest V3 extension structure with a stateless background s
 ## Storage plan
 - Jobs: IndexedDB via Dexie
 - Settings: Chrome storage with a local fallback for browser preview
+- Job records use a stable identifier and preserve status history; schema upgrades are handled by Dexie migrations.
+- Popup and dashboard writes go through the service worker. The dashboard observes IndexedDB changes with Dexie live queries.
 
 ## Why this stack
 - React + Vite provides a fast UI workflow for the dashboard and popup.

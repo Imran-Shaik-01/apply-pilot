@@ -10,6 +10,28 @@ export const safeUrl = (value: string | undefined): string => {
   }
 }
 
+export const canonicalizeJobUrl = (value: string): string => {
+  const parsed = safeUrl(value)
+  if (!parsed) return ''
+
+  const url = new URL(parsed)
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(utm_.+|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
+      url.searchParams.delete(key)
+    }
+  }
+  return url.toString()
+}
+
+export const getStableJobId = (value: string, jobId?: string): string => {
+  const parsed = safeUrl(value)
+  if (!parsed) return ''
+
+  const url = new URL(parsed)
+  const path = url.pathname.replace(/\/+$/, '') || '/'
+  return `${url.hostname}-${jobId || path}`
+}
+
 export const normalizeText = (value: string | undefined): string => {
   if (!value) return ''
   return value.replace(/\s+/g, ' ').trim()

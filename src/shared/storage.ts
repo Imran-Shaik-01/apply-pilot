@@ -13,6 +13,15 @@ class ApplyPilotDB extends Dexie {
     this.version(1).stores({
       jobs: 'id, status, source, company, title, appliedAt, url',
     })
+    this.version(2)
+      .stores({
+        jobs: 'id, status, source, company, title, appliedAt, updatedAt, url',
+      })
+      .upgrade(async (transaction) => {
+        await transaction.table('jobs').toCollection().modify((job: JobApplication) => {
+          job.statusHistory ??= [{ status: job.status, changedAt: job.updatedAt }]
+        })
+      })
   }
 }
 
@@ -65,16 +74,47 @@ export const clearPopupDraft = async (pageUrl: string) => {
   }
 }
 
-export const listJobs = async (): Promise<JobApplication[]> => {
+const listJobsDirect = async (): Promise<JobApplication[]> => {
   return db.jobs.orderBy('appliedAt').reverse().toArray()
 }
 
-export const saveJob = async (job: JobApplication) => {
+const saveJobDirect = async (job: JobApplication) => {
   const parsed = jobSchema.parse(job)
   await db.jobs.put(parsed)
   return parsed
 }
 
-export const deleteJob = async (id: string) => {
+const deleteJobDirect = async (id: string) => {
   await db.jobs.delete(id)
+}
+
+const isExtensionPage = () =>
+  typeof chrome !== 'undefined' &&
+  Boolean(chrome.runtime?.id) &&
+  typeof document !== 'undefined'
+
+const sendJobRequest = async <T,>(type: string, payload?: unknown): Promise<T> => {
+  const response = await chrome.runtime.sendMessage({ type, payload })
+  if (!response?.ok) {
+    throw new Error(response?.message ?? `Could not complete ${type}.`)
+  }
+  return response.data as T
+}
+
+export const listJobs = async (): Promise<JobApplication[]> =>
+  isExtensionPage() ? sendJobRequest<JobApplication[]>('GET_JOBS') : listJobsDirect()
+
+export const saveJob = async (job: JobApplication) => {
+  const parsed = jobSchema.parse(job)
+  return isExtensionPage()
+    ? sendJobRequest<JobApplication>('SAVE_JOB', parsed)
+    : saveJobDirect(parsed)
+}
+
+export const deleteJob = async (id: string) => {
+  if (isExtensionPage()) {
+    await sendJobRequest<void>('DELETE_JOB', { id })
+    return
+  }
+  await deleteJobDirect(id)
 }

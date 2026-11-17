@@ -22,6 +22,17 @@ describe('jobSchema', () => {
     expect(jobSchema.safeParse({ ...validJob, status: 'Pending' }).success).toBe(false)
     expect(jobSchema.safeParse({ ...validJob, appliedAt: 'not-a-date' }).success).toBe(false)
   })
+
+  it('validates optional status history entries', () => {
+    expect(jobSchema.safeParse({
+      ...validJob,
+      statusHistory: [{ status: 'Applied', changedAt: validJob.updatedAt }],
+    }).success).toBe(true)
+    expect(jobSchema.safeParse({
+      ...validJob,
+      statusHistory: [{ status: 'Pending', changedAt: validJob.updatedAt }],
+    }).success).toBe(false)
+  })
 })
 
 describe('settingsSchema', () => {

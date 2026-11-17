@@ -28,6 +28,8 @@ Apply Pilot is a Chrome extension for capturing useful details from supported jo
 | **See your progress** | Review daily, weekly, and monthly totals, along with response and interview insights. |
 | **Control page capture** | Enable or disable job-page capture in your preferences. |
 
+Application statuses are updated manually; Apply Pilot does not infer when an application has been ghosted.
+
 ## Getting started
 
 ### Install from the repository ZIP
@@ -49,7 +51,7 @@ The repository includes a ready-to-load extension build, so you don’t need to 
 
 Application records and preferences are stored locally in your browser. Apply Pilot does not require an account, and job-page details are not sent to an Apply Pilot server.
 
-To detect job information, the extension requests access to pages visited over HTTP or HTTPS. Page analysis takes place in the browser. You can turn capture off in the extension’s preferences.
+To detect job information, the content script runs only on the supported job-board and ATS domains listed in the extension manifest. Page analysis takes place in the browser. You can turn capture off in the extension’s preferences.
 
 ## Built with
 
@@ -67,6 +69,8 @@ Requires a Node.js version supported by the project’s `engines` setting.
 npm ci
 npm run dev
 ```
+
+Open `/dashboard.html` or `/popup.html` on the Vite development server.
 
 Useful project checks:
 

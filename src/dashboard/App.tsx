@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
-import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
+import { liveQuery } from 'dexie'
+import { db, deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../shared/storage'
 import {
   defaultSettings,
   statusOptions,
@@ -7,7 +8,7 @@ import {
   type JobStatus,
   type Settings,
 } from '../shared/types'
-import { formatDate, getAppSummary, isoNow, safeUrl } from '../shared/utils'
+import { canonicalizeJobUrl, formatDate, getAppSummary, getStableJobId, isoNow, safeUrl } from '../shared/utils'
 
 type View = 'Overview' | 'Applications' | 'Insights' | 'Settings'
 
@@ -15,6 +16,9 @@ type JobDraft = {
   title: string
   company: string
   url: string
+  applicationUrl: string
+  platform: string
+  recruiter: string
   status: JobStatus
   appliedAt: string
   location: string
@@ -33,6 +37,9 @@ const emptyDraft = (): JobDraft => ({
   title: '',
   company: '',
   url: '',
+  applicationUrl: '',
+  platform: '',
+  recruiter: '',
   status: 'Applied',
   appliedAt: localDateTimeValue(),
   location: '',
@@ -144,19 +151,20 @@ export function DashboardApp() {
   const cancelPendingDelete = useCallback(() => setPendingDeleteId(null), [])
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [nextJobs, nextSettings] = await Promise.all([listJobs(), getSettings()])
+    const subscription = liveQuery(() => db.jobs.orderBy('appliedAt').reverse().toArray()).subscribe({
+      next: (nextJobs) => {
         setJobs(nextJobs)
-        setSettings(nextSettings)
-      } catch {
-        setError('Could not load your saved applications.')
-      } finally {
         setLoading(false)
-      }
-    }
-
-    void load()
+      },
+      error: () => {
+        setError('Could not load your saved applications.')
+        setLoading(false)
+      },
+    })
+    void getSettings().then(setSettings).catch(() => {
+      setError('Could not load your saved applications.')
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
@@ -216,6 +224,9 @@ export function DashboardApp() {
       title: job.title,
       company: job.company,
       url: job.url,
+      applicationUrl: job.applicationUrl ?? job.url,
+      platform: job.platform ?? '',
+      recruiter: job.recruiter ?? '',
       status: job.status,
       appliedAt: localDateTimeValue(new Date(job.appliedAt)),
       location: job.location ?? '',
@@ -267,7 +278,7 @@ export function DashboardApp() {
     event.preventDefault()
     setError('')
     setNotice('')
-    const url = safeUrl(draft.url.trim())
+    const url = canonicalizeJobUrl(draft.url.trim())
     if (!url) {
       setError('Enter a valid http or https job link.')
       return
@@ -279,16 +290,23 @@ export function DashboardApp() {
       return
     }
     const appliedAt = appliedDate.toISOString()
+    const applicationUrl = canonicalizeJobUrl(draft.applicationUrl.trim()) || url
 
     const timestamp = isoNow()
+    const statusHistory = editingJob?.statusHistory ?? (
+      editingJob ? [{ status: editingJob.status, changedAt: editingJob.updatedAt }] : []
+    )
     const job: JobApplication = {
-      id: editingJob?.id ?? crypto.randomUUID(),
+      id: editingJob?.id ?? getStableJobId(url),
       jobId: editingJob?.jobId,
       title: draft.title.trim(),
       company: draft.company.trim(),
       url,
-      applicationUrl: url,
+      applicationUrl,
       status: draft.status,
+      statusHistory: draft.status === editingJob?.status
+        ? statusHistory
+        : [...statusHistory, { status: draft.status, changedAt: timestamp }],
       source: editingJob?.source ?? new URL(url).hostname,
       appliedAt,
       createdAt: editingJob?.createdAt ?? timestamp,
@@ -298,15 +316,19 @@ export function DashboardApp() {
       salary: draft.salary.trim() || undefined,
       employmentType: draft.employmentType.trim() || undefined,
       notes: draft.notes.trim() || undefined,
+      recruiter: draft.recruiter.trim() || undefined,
+      platform: draft.platform.trim() || undefined,
     }
 
     setSaving(true)
     try {
+      if (!editingJob && (await listJobs()).some((existing) =>
+        existing.id === job.id || canonicalizeJobUrl(existing.url) === url,
+      )) {
+        setError('This application is already saved.')
+        return
+      }
       await saveJob(job)
-      setJobs((current) => [
-        job,
-        ...current.filter((item) => item.id !== job.id),
-      ].sort((a, b) => Date.parse(b.appliedAt) - Date.parse(a.appliedAt)))
       closeDialog()
       setNotice(editingJob ? 'Application updated.' : 'Application added.')
     } catch {
@@ -321,7 +343,6 @@ export function DashboardApp() {
     setNotice('')
     try {
       await deleteJob(job.id)
-      setJobs((current) => current.filter((item) => item.id !== job.id))
       setPendingDeleteId(null)
       setNotice('Application deleted.')
     } catch {
@@ -333,8 +354,15 @@ export function DashboardApp() {
     setError('')
     const updatedAt = isoNow()
     try {
-      await saveJob({ ...job, status, updatedAt })
-      setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status, updatedAt } : item))
+      const statusHistory = job.statusHistory ?? [{ status: job.status, changedAt: job.updatedAt }]
+      await saveJob({
+        ...job,
+        status,
+        updatedAt,
+        statusHistory: status === job.status
+          ? statusHistory
+          : [...statusHistory, { status, changedAt: updatedAt }],
+      })
     } catch {
       setError(`Could not update ${job.company}'s application status.`)
     }
@@ -556,13 +584,27 @@ export function DashboardApp() {
               <label>Role<input required autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
               <label>Company<input required value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} /></label>
               <label className="full-width">Job link<input required type="url" placeholder="https://…" value={draft.url} onChange={(event) => setDraft({ ...draft, url: event.target.value })} /></label>
+              <label className="full-width">Application link<input type="url" placeholder="https://…" value={draft.applicationUrl} onChange={(event) => setDraft({ ...draft, applicationUrl: event.target.value })} /></label>
               <label>Status<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as JobStatus })}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label>
               <label>Applied at<input required type="datetime-local" value={draft.appliedAt} onChange={(event) => setDraft({ ...draft, appliedAt: event.target.value })} /></label>
+              <label>Platform<input value={draft.platform} onChange={(event) => setDraft({ ...draft, platform: event.target.value })} /></label>
+              <label>Recruiter<input value={draft.recruiter} onChange={(event) => setDraft({ ...draft, recruiter: event.target.value })} /></label>
               <label>Location<input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} /></label>
               <label>Work mode<input value={draft.workMode} onChange={(event) => setDraft({ ...draft, workMode: event.target.value })} /></label>
               <label>Salary<input value={draft.salary} onChange={(event) => setDraft({ ...draft, salary: event.target.value })} /></label>
               <label>Employment type<input value={draft.employmentType} onChange={(event) => setDraft({ ...draft, employmentType: event.target.value })} /></label>
               <label className="full-width">Notes<textarea rows={3} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
+              {editingJob && (
+                <section className="full-width" aria-label="Status history">
+                  <h3>Status history</h3>
+                  <ul>
+                    {(editingJob.statusHistory ?? [{ status: editingJob.status, changedAt: editingJob.updatedAt }])
+                      .map((change, index) => (
+                        <li key={`${change.changedAt}-${index}`}>{change.status} · {formatDate(change.changedAt)}</li>
+                      ))}
+                  </ul>
+                </section>
+              )}
               {error && <p className="form-error full-width" role="alert">{error}</p>}
               <div className="dialog-actions full-width">
                 <button type="button" className="secondary-button" onClick={closeDialog}>Cancel</button>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getAppSummary, getWeekStart, safeUrl } from './utils'
+import { canonicalizeJobUrl, getAppSummary, getStableJobId, getWeekStart, safeUrl } from './utils'
 
 describe('safeUrl', () => {
   it('accepts absolute HTTP and HTTPS URLs', () => {
@@ -9,9 +9,21 @@ describe('safeUrl', () => {
 
   it('rejects unsupported and relative URLs', () => {
     expect(safeUrl('javascript:alert(1)')).toBe('')
-    // Relative paths are invalid because safeUrl deliberately does not resolve against a page URL.
     expect(safeUrl('/roles/1')).toBe('')
     expect(safeUrl('not a URL')).toBe('')
+  })
+})
+
+describe('canonicalizeJobUrl', () => {
+  it('removes tracking parameters and creates stable identifiers', () => {
+    const url = canonicalizeJobUrl('https://jobs.example/roles/1?utm_source=mail&ref=campaign&id=42')
+    expect(url).toBe('https://jobs.example/roles/1?ref=campaign&id=42')
+    expect(getStableJobId(url)).toBe('jobs.example-/roles/1')
+    expect(getStableJobId(url, 'REQ-42')).toBe('jobs.example-REQ-42')
+  })
+
+  it('rejects unsupported URLs', () => {
+    expect(canonicalizeJobUrl('javascript:alert(1)')).toBe('')
   })
 })
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { statusOptions } from './types'
 
 export const jobSchema = z.object({
   id: z.string().min(1),
@@ -7,7 +8,11 @@ export const jobSchema = z.object({
   company: z.string().min(1),
   url: z.string().url(),
   applicationUrl: z.string().url().optional(),
-  status: z.enum(['Applied', 'Interviewing', 'Offer', 'Rejected', 'Withdrawn', 'Ghosted']),
+  status: z.enum(statusOptions),
+  statusHistory: z.array(z.object({
+    status: z.enum(statusOptions),
+    changedAt: z.string().datetime(),
+  })).optional(),
   source: z.string().min(1),
   appliedAt: z.string().datetime(),
   createdAt: z.string().datetime(),

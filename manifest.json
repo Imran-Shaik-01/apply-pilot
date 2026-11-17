@@ -8,7 +8,6 @@
     "activeTab",
     "storage",
     "alarms",
-    "notifications",
     "contextMenus",
     "scripting"
   ],
@@ -16,8 +15,17 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "https://*.linkedin.com/*",
+    "https://*.indeed.com/*",
+    "https://*.glassdoor.com/*",
+    "https://*.ziprecruiter.com/*",
+    "https://*.monster.com/*",
+    "https://*.greenhouse.io/*",
+    "https://*.lever.co/*",
+    "https://*.ashbyhq.com/*",
+    "https://*.smartrecruiters.com/*",
+    "https://*.workable.com/*",
+    "https://*.myworkdayjobs.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -25,7 +33,19 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": [
+        "https://*.linkedin.com/*",
+        "https://*.indeed.com/*",
+        "https://*.glassdoor.com/*",
+        "https://*.ziprecruiter.com/*",
+        "https://*.monster.com/*",
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.ashbyhq.com/*",
+        "https://*.smartrecruiters.com/*",
+        "https://*.workable.com/*",
+        "https://*.myworkdayjobs.com/*"
+      ],
       "js": ["dist/content.js"],
       "run_at": "document_idle"
     }

@@ -7,7 +7,7 @@ import {
   updateSettings,
 } from '../shared/storage'
 import { defaultSettings, type JobApplication, type Settings } from '../shared/types'
-import { isoNow } from '../shared/utils'
+import { canonicalizeJobUrl, getStableJobId, isoNow } from '../shared/utils'
 
 type Draft = {
   title: string
@@ -69,7 +69,7 @@ const getActivePage = async (): Promise<{ url: string; capture?: Partial<JobAppl
             injectionSucceeded = true
             break
           } catch {
-            // Try the alternate path for extensions loaded from the repository root or dist folder.
+            continue
           }
         }
         if (!injectionSucceeded) return { url: tab.url ?? '' }
@@ -88,6 +88,8 @@ export function PopupApp() {
   const [settings, setSettings] = useState<Settings>(defaultSettings)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [pageUrl, setPageUrl] = useState('')
+  const [capturedId, setCapturedId] = useState('')
+  const [capturedJobId, setCapturedJobId] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -107,6 +109,8 @@ export function PopupApp() {
         setPageUrl(activePage.url)
         const capture = activePage.capture
         if (capture?.title && capture.company?.trim()) {
+          setCapturedId(typeof capture.id === 'string' ? capture.id : '')
+          setCapturedJobId(typeof capture.jobId === 'string' ? capture.jobId : '')
           setDraft({
             title: capture.title,
             company: capture.company,
@@ -145,8 +149,9 @@ export function PopupApp() {
     const company = draft.company.trim()
     let url: URL
     try {
-      url = new URL(pageUrl)
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Unsupported URL')
+      const canonicalUrl = canonicalizeJobUrl(pageUrl)
+      if (!canonicalUrl) throw new Error('Unsupported URL')
+      url = new URL(canonicalUrl)
     } catch {
       setError('Open the job posting in this tab before saving.')
       return
@@ -159,12 +164,14 @@ export function PopupApp() {
 
     const now = isoNow()
     const job: JobApplication = {
-      id: `manual-${crypto.randomUUID()}`,
+      id: capturedId || getStableJobId(url.toString(), capturedJobId || undefined),
+      jobId: capturedJobId || undefined,
       title,
       company,
       url: url.toString(),
       applicationUrl: url.toString(),
       status: 'Applied',
+      statusHistory: [{ status: 'Applied', changedAt: now }],
       source: url.hostname,
       platform: url.hostname,
       location: draft.location.trim() || undefined,
@@ -178,9 +185,24 @@ export function PopupApp() {
 
     setSaving(true)
     try {
+      const existingJobs = await listJobs()
+      if (existingJobs.some((existing) =>
+        existing.id === job.id || canonicalizeJobUrl(existing.url) === job.url,
+      )) {
+        setDraft(emptyDraft)
+        setCapturedId('')
+        setCapturedJobId('')
+        setMessage('This application is already saved.')
+        await clearPopupDraft(url.toString()).catch(() => {
+          setError('Application is already saved, but the saved draft could not be cleared.')
+        })
+        return
+      }
       await saveJob(job)
       setTodayCount((count) => count + 1)
       setDraft(emptyDraft)
+      setCapturedId('')
+      setCapturedJobId('')
       setMessage('Application saved.')
       try {
         await clearPopupDraft(url.toString())
