@@ -4,6 +4,8 @@ import { deleteJob, getSettings, listJobs, saveJob, updateSettings } from '../sh
 import { jobSchema, settingsSchema } from '../shared/schema'
 import { isoNow } from '../shared/utils'
 
+const popupDraftTtlMs = 24 * 60 * 60 * 1000
+
 const automaticCaptureSchema = z.object({
   title: z.string().trim().min(1).max(500),
   company: z.string().trim().min(1).max(500),
@@ -33,6 +35,17 @@ const getCapturePageKey = (pageUrl: string) => {
   return url.toString()
 }
 
+const cleanupExpiredPopupDraft = async () => {
+  const { popupDraftExpiry } = await chrome.storage.local.get(['popupDraftExpiry'])
+  if (
+    typeof popupDraftExpiry !== 'number' ||
+    !Number.isFinite(popupDraftExpiry) ||
+    Date.now() >= popupDraftExpiry
+  ) {
+    await chrome.storage.local.remove(['popupDraft', 'popupDraftExpiry'])
+  }
+}
+
 let captureQueue = Promise.resolve()
 const serializeCaptureOperation = <T,>(operation: () => Promise<T>) => {
   const result = captureQueue.then(operation, operation)
@@ -59,7 +72,12 @@ const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.Mes
   }
   if (!['http:', 'https:'].includes(pageUrl.protocol) || pageUrl.hostname !== senderUrl.hostname) return false
 
-  const stored = await chrome.storage.local.get(['settings', 'popupDraft', 'suppressedAutoCaptureUrl'])
+  const stored = await chrome.storage.local.get([
+    'settings',
+    'popupDraft',
+    'popupDraftExpiry',
+    'suppressedAutoCaptureUrl',
+  ])
   const settings = stored.settings as Pick<Settings, 'enabled'> | undefined
   if (settings?.enabled !== true) return false
 
@@ -67,7 +85,17 @@ const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.Mes
   if (stored.suppressedAutoCaptureUrl === pageKey) return false
 
   const currentDraft = stored.popupDraft as PopupDraft | undefined
-  if (currentDraft && currentDraft.autoCaptured !== true) return false
+  const draftExpired =
+    currentDraft &&
+    (
+      typeof stored.popupDraftExpiry !== 'number' ||
+      !Number.isFinite(stored.popupDraftExpiry) ||
+      Date.now() >= stored.popupDraftExpiry
+    )
+  if (draftExpired) {
+    await chrome.storage.local.remove(['popupDraft', 'popupDraftExpiry'])
+  }
+  if (currentDraft && !draftExpired && currentDraft.autoCaptured !== true) return false
 
   if (stored.suppressedAutoCaptureUrl) {
     await chrome.storage.local.remove('suppressedAutoCaptureUrl')
@@ -83,7 +111,12 @@ const saveAutomaticCapture = async (payload: unknown, sender: chrome.runtime.Mes
     pageUrl: pageUrl.toString(),
     autoCaptured: true,
   }
-  await chrome.storage.local.set({ popupDraft: autoDraft })
+  const popupDraftExpiry = Date.now() + popupDraftTtlMs
+  await chrome.storage.local.set({
+    popupDraft: autoDraft,
+    popupDraftExpiry,
+  })
+  chrome.alarms.create('popup-draft-expiry', { when: popupDraftExpiry })
   return true
 }
 
@@ -102,7 +135,7 @@ const clearSavedPopupDraft = async (payload: unknown) => {
   }
 
   await chrome.storage.local.set({ suppressedAutoCaptureUrl: pageKey })
-  await chrome.storage.local.remove('popupDraft')
+  await chrome.storage.local.remove(['popupDraft', 'popupDraftExpiry'])
 }
 
 const clearReloadedAutomaticCapture = async (
@@ -132,19 +165,22 @@ const clearReloadedAutomaticCapture = async (
   if (!['http:', 'https:'].includes(pageUrl.protocol) || pageUrl.hostname !== senderUrl.hostname) return false
 
   const pageKey = getCapturePageKey(pageUrl.toString())
-  const stored = await chrome.storage.local.get(['popupDraft'])
+  const stored = await chrome.storage.local.get(['popupDraft', 'popupDraftExpiry'])
   const currentDraft = stored.popupDraft as PopupDraft | undefined
   if (
     currentDraft?.autoCaptured === true &&
     getCapturePageKey(currentDraft.pageUrl) === pageKey
   ) {
-    await chrome.storage.local.remove('popupDraft')
+    await chrome.storage.local.remove(['popupDraft', 'popupDraftExpiry'])
   }
   await chrome.storage.local.set({ suppressedAutoCaptureUrl: pageKey })
   return true
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
+  await cleanupExpiredPopupDraft().catch((error: unknown) => {
+    console.error('Apply Pilot could not clean up expired job-page data.', error)
+  })
   const settings = await getSettings().catch(() => defaultSettings)
   await updateSettings(settings)
 
@@ -154,6 +190,12 @@ chrome.runtime.onInstalled.addListener(async () => {
         id: 'apply-pilot-save',
         title: 'Save this job',
         contexts: ['page'],
+      })
+
+      chrome.runtime.onStartup.addListener(() => {
+        void cleanupExpiredPopupDraft().catch((error: unknown) => {
+          console.error('Apply Pilot could not clean up expired job-page data.', error)
+        })
       })
     })
   }
@@ -241,6 +283,13 @@ chrome.contextMenus?.onClicked.addListener((info, tab) => {
 })
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'popup-draft-expiry') {
+    void cleanupExpiredPopupDraft().catch((error: unknown) => {
+      console.error('Apply Pilot could not clean up expired job-page data.', error)
+    })
+    return
+  }
+
   if (alarm.name === 'follow-up') {
     chrome.notifications?.create({
       type: 'basic',

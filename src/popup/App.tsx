@@ -48,14 +48,22 @@ const getActivePage = async (): Promise<{ url: string; capture?: Partial<JobAppl
       if (response?.ok && response.data) {
         return { url: tab.url ?? '', capture: response.data as Partial<JobApplication> }
       }
-      if (response?.disabled || response?.refreshed || response?.isJobPage === false) {
+      if (response?.disabled || response?.refreshed) {
+        return { url: tab.url ?? '' }
+      }
+      if (response?.isJobPage === false && attempt >= 2) {
         return { url: tab.url ?? '' }
       }
     } catch {
       if (!injectionAttempted && chrome.scripting) {
         injectionAttempted = true
         let injectionSucceeded = false
-        for (const file of ['dist/content.js', 'content.js']) {
+        const contentScripts = chrome.runtime.getManifest().content_scripts ?? []
+        const scriptPaths = contentScripts.flatMap((script) => script.js ?? [])
+        const injectionPaths = scriptPaths.some((file) => file.endsWith('content.js'))
+          ? scriptPaths.filter((file) => file.endsWith('content.js'))
+          : ['dist/content.js', 'content.js']
+        for (const file of injectionPaths) {
           try {
             await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [file] })
             injectionSucceeded = true
@@ -98,7 +106,7 @@ export function PopupApp() {
         setSettings(nextSettings)
         setPageUrl(activePage.url)
         const capture = activePage.capture
-        if (capture?.title && capture.company && capture.company !== 'Unknown company') {
+        if (capture?.title && capture.company?.trim()) {
           setDraft({
             title: capture.title,
             company: capture.company,
