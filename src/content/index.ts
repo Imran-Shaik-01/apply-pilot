@@ -49,6 +49,21 @@ const findJobPosting = (value: unknown): Record<string, unknown> | null => {
   return findJobPosting(record['@graph']) ?? findJobPosting(record.mainEntity)
 }
 
+const jobIdCache = new Map<string, string>()
+
+const getPageJobId = (url: string) => {
+  const cached = jobIdCache.get(url)
+  if (cached !== undefined) return cached
+
+  const jobId = document.body.innerText.match(/(REQ[-_ ]?[A-Z0-9]+|JOB[-_ ]?[A-Z0-9]+|[A-Z]{2,}-\d+)/)?.[0] ?? ''
+  if (jobIdCache.size >= 20) {
+    const oldestUrl = jobIdCache.keys().next().value
+    if (oldestUrl !== undefined) jobIdCache.delete(oldestUrl)
+  }
+  jobIdCache.set(url, jobId)
+  return jobId
+}
+
 const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boolean } => {
   const jsonNodes = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
   let structured: Record<string, unknown> | null = null
@@ -108,7 +123,6 @@ const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boolean } =>
     '.posting-headline h1',
     '.posting-headline h2',
     '.posting-headline h3',
-    '[data-automation-id="jobPostingHeader"]',
     'h1[itemprop="title"]',
     '[itemprop="title"]',
   )
@@ -244,10 +258,7 @@ const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boolean } =>
     identifier && typeof identifier === 'object'
       ? normalizeText((identifier as Record<string, unknown>).value)
       : normalizeText(identifier)
-  const jobId =
-    identifierValue ||
-    document.body.innerText.match(/(REQ[-_ ]?[A-Z0-9]+|JOB[-_ ]?[A-Z0-9]+|[A-Z]{2,}-\d+)/)?.[0] ||
-    ''
+  const jobId = identifierValue || (isJobPage ? getPageJobId(window.location.href) : '')
   const url = safeUrl(window.location.href)
   const source = window.location.hostname
   const now = isoNow()
@@ -255,7 +266,7 @@ const attemptCapture = (): { data: Partial<CapturedJob>; isJobPage: boolean } =>
   return {
     isJobPage,
     data: {
-      id: `${source}-${jobId || window.location.hash || Date.now()}`,
+      id: `${source}-${jobId || window.location.pathname}`,
       jobId: jobId || undefined,
       title,
       company: resolvedCompany,
@@ -282,6 +293,31 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
   let scanPending = false
   let captureObserver: MutationObserver | undefined
   let mutationTimer = 0
+  let observedPageUrl = window.location.href
+  let cachedCaptureEnabled: boolean | undefined
+  let pendingCaptureSetting: Promise<boolean> | undefined
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !('settings' in changes)) return
+    const settings = changes.settings.newValue as { enabled?: boolean } | undefined
+    cachedCaptureEnabled = settings?.enabled === true
+  })
+
+  const getCaptureEnabled = () => {
+    if (cachedCaptureEnabled !== undefined) return Promise.resolve(cachedCaptureEnabled)
+    if (pendingCaptureSetting) return pendingCaptureSetting
+
+    pendingCaptureSetting = chrome.storage.local.get(['settings'])
+      .then((stored) => {
+        const settings = stored.settings as { enabled?: boolean } | undefined
+        cachedCaptureEnabled = settings?.enabled === true
+        return cachedCaptureEnabled
+      })
+      .finally(() => {
+        pendingCaptureSetting = undefined
+      })
+    return pendingCaptureSetting
+  }
 
   if (suppressCaptureUntilNavigation) {
     void chrome.runtime.sendMessage({
@@ -296,11 +332,8 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
     if (suppressCaptureUntilNavigation) return
     if (scanPending) return
     scanPending = true
-    chrome.storage.local.get(['settings'], (stored) => {
-      scanPending = false
-      const settings = stored.settings as { enabled?: boolean } | undefined
-      if (settings?.enabled !== true) return
-
+    void getCaptureEnabled().then(async (enabled) => {
+      if (!enabled) return
       const extraction = attemptCapture()
       const capture = extraction.data
       if (!extraction.isJobPage || !capture.title || !capture.company || !capture.url) return
@@ -316,39 +349,52 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
       }
       const signature = JSON.stringify(payload)
       if (signature === lastSentCapture) return
+      const response = await chrome.runtime.sendMessage({ type: 'AUTO_CAPTURE_PAGE', payload })
+      if (response?.ok === false) {
+        console.error('Apply Pilot could not capture this job page.', response.message)
+        return
+      }
       lastSentCapture = signature
-      void chrome.runtime.sendMessage({ type: 'AUTO_CAPTURE_PAGE', payload }).then((response) => {
-        if (response?.ok === false) console.error('Apply Pilot could not capture this job page.', response.message)
-      }).catch((error: unknown) => {
-        console.error('Apply Pilot could not save the detected job-page draft.', error)
-      })
+    }).catch((error: unknown) => {
+      console.error('Apply Pilot could not save the detected job-page draft.', error)
+    }).finally(() => {
+      scanPending = false
     })
   }
 
   const startAutoCapture = () => {
-    if (suppressCaptureUntilNavigation) return
-    autoCapture()
+    if (!suppressCaptureUntilNavigation) autoCapture()
     captureObserver?.disconnect()
     captureObserver = new MutationObserver(() => {
+      if (window.location.href !== observedPageUrl) {
+        resumeAutoCaptureAfterNavigation()
+        return
+      }
       window.clearTimeout(mutationTimer)
-      mutationTimer = window.setTimeout(autoCapture, 700)
+      mutationTimer = window.setTimeout(autoCapture, 300)
     })
     captureObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       characterData: true,
     })
-    window.setTimeout(() => captureObserver?.disconnect(), 15000)
   }
 
-  window.setTimeout(startAutoCapture, 500)
   const resumeAutoCaptureAfterNavigation = () => {
+    const currentPageUrl = window.location.href
+    if (currentPageUrl === observedPageUrl && !suppressCaptureUntilNavigation) return
+    observedPageUrl = currentPageUrl
     suppressCaptureUntilNavigation = false
     lastSentCapture = ''
     startAutoCapture()
   }
+  startAutoCapture()
   window.addEventListener('popstate', resumeAutoCaptureAfterNavigation)
   window.addEventListener('hashchange', resumeAutoCaptureAfterNavigation)
+  window.addEventListener('beforeunload', () => {
+    window.clearTimeout(mutationTimer)
+    captureObserver?.disconnect()
+  }, { once: true })
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === 'GET_PAGE_CAPTURE') {
@@ -356,14 +402,20 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
         sendResponse({ ok: true, data: null, refreshed: true })
         return
       }
-      chrome.storage.local.get(['settings'], (stored) => {
-        const settings = stored.settings as { enabled?: boolean } | undefined
-        if (settings?.enabled !== true) {
-          sendResponse({ ok: true, data: null, disabled: true })
+      void getCaptureEnabled().then((enabled) => {
+        if (!enabled) {
+          sendResponse({ ok: true, data: null, disabled: true, isJobPage: false })
           return
         }
         const extraction = attemptCapture()
-        sendResponse({ ok: true, data: extraction.isJobPage ? extraction.data : null })
+        sendResponse({
+          ok: true,
+          data: extraction.isJobPage ? extraction.data : null,
+          isJobPage: extraction.isJobPage,
+        })
+      }).catch((error: unknown) => {
+        console.error('Apply Pilot could not read the capture setting.', error)
+        sendResponse({ ok: false, message: 'Could not read the capture setting.' })
       })
       return true
     }

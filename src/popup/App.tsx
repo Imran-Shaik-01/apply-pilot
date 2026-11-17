@@ -41,27 +41,38 @@ const getActivePage = async (): Promise<{ url: string; capture?: Partial<JobAppl
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id) return { url: tab?.url ?? '' }
 
-  const getCapture = async () => {
-    const response = await chrome.tabs.sendMessage(tab.id!, { type: 'GET_PAGE_CAPTURE' })
-    return response?.ok ? (response.data as Partial<JobApplication> | null) ?? undefined : undefined
-  }
-
-  try {
-    const capture = await getCapture()
-    return { url: tab.url ?? '', capture }
-  } catch {
-    if (!chrome.scripting) return { url: tab.url ?? '' }
+  let injectionAttempted = false
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['dist/content.js'],
-      })
-      const capture = await getCapture()
-      return { url: tab.url ?? '', capture }
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CAPTURE' })
+      if (response?.ok && response.data) {
+        return { url: tab.url ?? '', capture: response.data as Partial<JobApplication> }
+      }
+      if (response?.disabled || response?.refreshed || response?.isJobPage === false) {
+        return { url: tab.url ?? '' }
+      }
     } catch {
-      return { url: tab.url ?? '' }
+      if (!injectionAttempted && chrome.scripting) {
+        injectionAttempted = true
+        let injectionSucceeded = false
+        for (const file of ['dist/content.js', 'content.js']) {
+          try {
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [file] })
+            injectionSucceeded = true
+            break
+          } catch {
+            // Try the alternate path for extensions loaded from the repository root or dist folder.
+          }
+        }
+        if (!injectionSucceeded) return { url: tab.url ?? '' }
+      } else {
+        return { url: tab.url ?? '' }
+      }
     }
+
+    if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, 250))
   }
+  return { url: tab.url ?? '' }
 }
 
 export function PopupApp() {
