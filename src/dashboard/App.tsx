@@ -354,7 +354,7 @@ export function DashboardApp() {
     <div className="dashboard-shell">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-mark" src="./icons/app-icon.svg" alt="" />
+          <img className="brand-mark" src="./icons/app-icon.png" alt="" />
           <div>
             <p>Apply Pilot</p>
             <small>Job pipeline</small>

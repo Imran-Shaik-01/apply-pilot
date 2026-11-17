@@ -208,7 +208,7 @@ export function PopupApp() {
     <main className="popup-shell">
       <header className="popup-header">
         <div className="brand">
-          <img className="brand-icon" src="./icons/app-icon.svg" alt="" />
+          <img className="brand-icon" src="./icons/app-icon.png" alt="" />
           <h1>Apply Pilot</h1>
         </div>
         <div className="capture-toggle">

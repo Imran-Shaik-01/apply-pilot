@@ -41,7 +41,7 @@ function App() {
     <div className="page-shell">
       <header className="topbar">
         <div className="brand-block" aria-label="Apply Pilot brand">
-          <img className="brand-mark" src="/icons/app-icon.svg" alt="" />
+          <img className="brand-mark" src="/icons/app-icon.png" alt="" />
           <div>
             <p className="eyebrow">Phase 1</p>
             <h1>Apply Pilot</h1>

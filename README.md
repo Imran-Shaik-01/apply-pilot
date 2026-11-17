@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/icons/app-icon.svg" alt="Apply Pilot icon" width="88" />
+  <img src="public/icons/app-icon.png" alt="Apply Pilot icon" width="88" />
 </p>
 
 <h1 align="center">Apply Pilot</h1>
