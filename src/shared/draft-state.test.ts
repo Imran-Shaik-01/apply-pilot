@@ -120,6 +120,40 @@ describe('global draft state machine', () => {
     expect(next.draft?.currentPageUrl).toBe('https://company.example/confirmation')
   })
 
+  it('fills missing unedited fields from a later partial-page capture', () => {
+    const partialCapture = capture('https://jobs.example/roles/1', {
+      fields: {
+        title: 'Engineer',
+        company: '',
+        location: '',
+        workMode: '',
+        salary: '',
+        employmentType: '',
+      },
+    })
+    const partial = applyPageCapture(
+      {},
+      partialCapture,
+      false,
+      partialCapture.jobUrl,
+      now,
+    )
+    const completeCapture = capture('https://jobs.example/roles/1', {
+      fields: { ...capture().fields, salary: 'USD 80,000' },
+    })
+    const filled = applyPageCapture(
+      partial,
+      completeCapture,
+      false,
+      completeCapture.jobUrl,
+      now + 2,
+    )
+
+    expect(filled.draft?.fields.company).toBe('Northstar')
+    expect(filled.draft?.fields.location).toBe('Toronto')
+    expect(filled.draft?.fields.salary).toBe('USD 80,000')
+  })
+
   it('updates only URL and updatedAt while locked or submitted', () => {
     const locked = lockDraft(provisional(), undefined, 'https://jobs.example/apply', now + 1)
     const next = applyPageCapture(

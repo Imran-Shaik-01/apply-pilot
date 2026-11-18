@@ -46,7 +46,7 @@ export const normalizeWorkMode = (value: unknown) => {
   const code = text.toUpperCase().split(/[/#]/).pop() ?? ''
   if (/(REMOTE|TELECOMMUTE|WORK_FROM_HOME)/.test(code)) return 'Remote'
   if (/HYBRID/.test(code)) return 'Hybrid'
-  if (/(ON[-_]?SITE|ON-PREMISES)/.test(code)) return 'On-site'
+  if (/(ON[-_ ]?SITE|ON[-_ ]?PREMISES|IN[_ -]?OFFICE|OFFICE[_ -]?BASED)/.test(code)) return 'On-site'
   return text
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobSchema, settingsSchema } from './schema'
+import { draftCaptureSchema, jobSchema, settingsSchema } from './schema'
 
 const validJob = {
   id: 'job-1',
@@ -39,5 +39,35 @@ describe('settingsSchema', () => {
   it('applies defaults and rejects an invalid week start', () => {
     expect(settingsSchema.parse({})).toEqual({ enabled: true, weekStartDay: 1 })
     expect(settingsSchema.safeParse({ weekStartDay: 7 }).success).toBe(false)
+  })
+})
+
+describe('draftCaptureSchema', () => {
+  const capture = {
+    fields: {
+      title: 'Engineer',
+      company: '',
+      location: '',
+      workMode: '',
+      salary: '',
+      employmentType: '',
+    },
+    jobUrl: 'https://jobs.example/jobs/42',
+    sourceHost: 'jobs.example',
+  }
+
+  it('accepts a partial capture with either role or company', () => {
+    expect(draftCaptureSchema.safeParse(capture).success).toBe(true)
+    expect(draftCaptureSchema.safeParse({
+      ...capture,
+      fields: { ...capture.fields, title: '', company: 'Northstar' },
+    }).success).toBe(true)
+  })
+
+  it('rejects a capture when both title and company are empty', () => {
+    expect(draftCaptureSchema.safeParse({
+      ...capture,
+      fields: { ...capture.fields, title: '', company: '' },
+    }).success).toBe(false)
   })
 })

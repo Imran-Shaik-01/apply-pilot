@@ -15,7 +15,6 @@ import {
 } from '../shared/storage'
 import {
   defaultSettings,
-  type DraftCapture,
   type DraftField,
   type GlobalDraft,
   type GlobalDraftState,
@@ -23,68 +22,9 @@ import {
   type Settings,
 } from '../shared/types'
 import { canonicalizeJobUrl, getStableJobId, isoNow } from '../shared/utils'
-import { draftCaptureSchema } from '../shared/schema'
 import { editDraft } from '../shared/draft-state'
 import { mergeVerifiedDraft } from './draft-merge'
-
-const isHttpUrl = (value: string) => {
-  try {
-    return ['http:', 'https:'].includes(new URL(value).protocol)
-  } catch {
-    return false
-  }
-}
-
-const getActivePage = async (
-  tabId: number | undefined,
-  tabUrl: string,
-): Promise<{ url: string; capture?: DraftCapture }> => {
-  if (
-    typeof chrome === 'undefined' ||
-    !chrome.tabs ||
-    tabId === undefined ||
-    !isHttpUrl(tabUrl)
-  ) return { url: tabUrl }
-
-  let injectionAttempted = false
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, { type: 'GET_PAGE_CAPTURE' })
-      if (response?.ok) {
-        return {
-          url: response.currentPageUrl ?? tabUrl,
-          capture: response.capture ? draftCaptureSchema.parse(response.capture) : undefined,
-        }
-      }
-      if (response?.disabled || response?.isJobPage === false) return { url: tabUrl }
-    } catch {
-      if (!injectionAttempted && chrome.scripting) {
-        injectionAttempted = true
-        let injectionSucceeded = false
-        const contentScripts = chrome.runtime.getManifest().content_scripts ?? []
-        const scriptPaths = contentScripts.flatMap((script) => script.js ?? [])
-        const injectionPaths = scriptPaths.some((file) => file.endsWith('content.js'))
-          ? scriptPaths.filter((file) => file.endsWith('content.js'))
-          : ['dist/content.js', 'content.js']
-        for (const file of injectionPaths) {
-          try {
-            await chrome.scripting.executeScript({ target: { tabId }, files: [file] })
-            injectionSucceeded = true
-            break
-          } catch {
-            continue
-          }
-        }
-        if (!injectionSucceeded) return { url: tabUrl }
-      } else {
-        return { url: tabUrl }
-      }
-    }
-
-    if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, 250))
-  }
-  return { url: tabUrl }
-}
+import { getActivePage, getPopupJobUrl, isHttpUrl } from './active-page'
 
 const sourceHost = (value: string) => {
   try {
@@ -412,6 +352,8 @@ export function PopupApp() {
     setError('')
     setMessage('')
     try {
+      await clearPopupDraftCache(isHttpUrl(pageUrl) ? [pageUrl] : [])
+      await refreshGlobalDraft(pageUrl, undefined)
       const activePage = await getActivePage(tabId, pageUrl)
       const nextState = await refreshGlobalDraft(activePage.url, activePage.capture)
       commitDraft(nextState.draft)
@@ -614,7 +556,7 @@ export function PopupApp() {
           <input
             autoComplete="url"
             placeholder="https://…"
-            value={draft?.jobUrl ?? ''}
+            value={getPopupJobUrl(draft, pageUrl)}
             disabled={!draftReady}
             onChange={(event) => updateDraftField('jobUrl', event.target.value)}
             onBlur={handleFieldBlur}

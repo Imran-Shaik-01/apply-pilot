@@ -1,4 +1,5 @@
 import { attemptCapture } from './extract'
+import { createDraftCapture } from './capture'
 import { isSubmissionMessage } from './normalizers'
 
 if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -50,32 +51,9 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
 
   const getCapture = () => {
     const extraction = attemptCapture()
-    const data = extraction.data
-    if (!extraction.isJobPage || !data.title || !data.company || !data.url) {
-      return { extraction, capture: undefined }
-    }
-    let sourceHost = ''
-    try {
-      sourceHost = new URL(data.url).hostname
-    } catch {
-      return { extraction, capture: undefined }
-    }
     return {
       extraction,
-      capture: {
-        id: data.id,
-        jobId: data.jobId,
-        fields: {
-          title: data.title,
-          company: data.company,
-          location: data.location ?? '',
-          workMode: data.workMode ?? '',
-          salary: data.salary ?? '',
-          employmentType: data.employmentType ?? '',
-        },
-        jobUrl: data.url,
-        sourceHost,
-      },
+      capture: createDraftCapture(extraction),
     }
   }
 

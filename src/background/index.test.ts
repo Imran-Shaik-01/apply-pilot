@@ -277,6 +277,48 @@ describe('global draft handlers', () => {
     expect(restored).not.toHaveProperty('draft')
   })
 
+  it('refreshes only the active draft cache instead of clearing another tab cache', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ enabled: true, weekStartDay: 1 })
+    const now = new Date().toISOString()
+    const activeDraft = {
+      status: 'provisional',
+      fields: capture.fields,
+      userEdited: {},
+      jobUrl: capture.jobUrl,
+      currentPageUrl: capture.jobUrl,
+      sourceHost: capture.sourceHost,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: Date.now() + 60_000,
+    }
+    const otherUrl = 'https://other.example/jobs/2'
+    const otherDraft = {
+      ...activeDraft,
+      jobUrl: otherUrl,
+      currentPageUrl: otherUrl,
+      sourceHost: 'other.example',
+    }
+    localValues.set('apply-pilot-global-draft', { draft: activeDraft })
+    sessionValues.set(`apply-pilot-popup-draft:${capture.jobUrl}`, {
+      url: capture.jobUrl,
+      draft: activeDraft,
+      cachedAt: Date.now(),
+    })
+    sessionValues.set(`apply-pilot-popup-draft:${otherUrl}`, {
+      url: otherUrl,
+      draft: otherDraft,
+      cachedAt: Date.now(),
+    })
+
+    await sendFromPopup({
+      type: 'REFRESH_DRAFT',
+      payload: { currentPageUrl: capture.jobUrl },
+    })
+
+    expect(sessionValues.has(`apply-pilot-popup-draft:${capture.jobUrl}`)).toBe(false)
+    expect(sessionValues.has(`apply-pilot-popup-draft:${otherUrl}`)).toBe(true)
+  })
+
   it('restores a cached draft only when no persisted draft supersedes it', async () => {
     vi.mocked(getSettings).mockResolvedValue({ enabled: true, weekStartDay: 1 })
     const draft = {

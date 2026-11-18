@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+- Reworked job extraction into generic structured-data, embedded-data, semantic-DOM, and title-pattern layers with validated partial captures.
+- Removed host-list logic from the extraction core and moved retained selector hints into a data-only registry.
+- Added bounded popup capture retries, canonical URL prefill, and active-URL-only refresh cache cleanup.
+- Added synthetic site-independence tests and an automatic saved-fixture matrix; real portal fixture coverage remains pending.
+
 ## 1.1.0
 - Replaced the popup refresh text with an accessible icon button, confirmation state, and reduced-motion-aware animation.
 - Added serialized per-URL session caching and live-page verification for faster draft refill while protecting edited and locked fields.

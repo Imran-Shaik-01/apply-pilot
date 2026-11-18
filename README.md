@@ -13,6 +13,14 @@ Apply Pilot is a local-first Chrome extension for capturing job details and trac
 
 Job details vary by site. Missing or uncertain fields are left blank for you to review.
 
+## Supported sites
+
+The generic extractor checks structured job data, embedded JSON, scoped semantic
+markup, and page-title patterns; optional selector hints supplement those sources.
+No portal is currently marked as fixture-verified because this repository does not
+yet contain saved real-world portal pages. Add a saved page and expected values under
+[tests/fixtures](./tests/fixtures/README.md) before claiming verified support for it.
+
 ## Install
 
 The repository includes a production build in `dist/`.
@@ -78,6 +86,7 @@ src/
   popup/       review, edit, refresh, and save workflow
   shared/      types, schemas, state logic, and local persistence
 docs/          architecture, security, and release notes
+tests/         synthetic extraction tests and saved-page fixture guidance
 public/        manifest source and static extension assets
 dist/          generated, loadable extension build
 ```

@@ -61,12 +61,20 @@ export const draftCaptureSchema = z.object({
   id: z.string().optional(),
   jobId: z.string().optional(),
   fields: draftFieldsSchema.extend({
-    title: z.string().trim().min(1).max(500),
-    company: z.string().trim().min(1).max(500),
+    title: z.string().max(500),
+    company: z.string().max(500),
   }),
   jobUrl: z.string().url(),
   sourceHost: z.string().min(1).max(255),
-}).strict()
+}).strict().superRefine((capture, context) => {
+  if (!capture.fields.title.trim() && !capture.fields.company.trim()) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A capture must contain a title or company.',
+      path: ['fields'],
+    })
+  }
+})
 
 const currentPageSchema = z.object({
   currentPageUrl: z.string().max(2048),

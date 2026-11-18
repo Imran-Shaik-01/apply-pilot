@@ -4,7 +4,7 @@
 
 Apply Pilot is a Manifest V3 Chrome extension. The background service worker coordinates extension messages, validated draft state, application persistence, expiry, and notifications. Lifecycle and message listeners are registered at module scope so Chrome can wake the worker for those events.
 
-The standalone content script runs on HTTP and HTTPS pages. It reads page markup locally, prioritizes structured job data, and reports captures and application-flow events to the worker. Automatic capture updates a draft; it does not save an application.
+The standalone content script runs on HTTP and HTTPS pages. Its generic extractor checks JSON-LD, microdata/RDFa, corroborated embedded JSON, scoped semantic markup, and page-title patterns in that order. Optional legacy selectors live in `src/content/site-hints.ts`; they do not gate job detection. Fields are validated independently, so a partial capture can be completed by a later scan. Extraction stays in the isolated content-script world and reads no page JavaScript variables. Automatic capture updates a draft; it does not save an application.
 
 The popup is the review-and-save surface. It first reads the persisted global draft or a per-URL cache in `chrome.storage.session`, then verifies the draft against the active page. User-edited fields and locked/submitted drafts take precedence over later page captures. Popup edits are debounced and flushed on blur and page hide.
 
@@ -25,6 +25,8 @@ The popup and dashboard validate messages and stored records with Zod. Pure draf
 - `src/shared` — types, schemas, storage clients, draft state, and shared utilities
 - `public` — source manifest and extension assets
 - `dist` — generated production extension
+
+Saved real-page extraction fixtures and their expected values belong in `tests/fixtures`. A site is described as fixture-verified only when its saved page passes the shared fixture-matrix test.
 
 ## Build and verification
 

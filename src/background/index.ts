@@ -461,7 +461,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id,
         )
         await writeGlobalState(next)
-        await clearPopupDraftCache()
+        await clearPopupDraftCache([
+          previous.draft?.jobUrl,
+          previous.draft?.currentPageUrl,
+          request.payload.currentPageUrl,
+        ].filter((url): url is string => Boolean(url && isHttpUrl(url))))
         await setSubmittedBadge(false)
         await chrome.notifications.clear(notificationId)
         return next

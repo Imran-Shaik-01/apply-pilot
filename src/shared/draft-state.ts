@@ -9,7 +9,7 @@ export const canonicalJobUrlKey = (value: string) => {
   try {
     const url = new URL(value)
     for (const key of [...url.searchParams.keys()]) {
-      if (/^(utm_.+|trk|trackingid|refid|ref|src|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
+      if (/^(utm_.+|trk|trackingid|tracking_id|refid|ref_id|ref|src|source|gclid|dclid|fbclid|msclkid|mc_cid|mc_eid|ref_src|ref_url)$/i.test(key)) {
         url.searchParams.delete(key)
       }
     }
